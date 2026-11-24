@@ -2,12 +2,10 @@
 
 ## 0.5.0 (2026-11-24)
 - New: Grok as an AI engine; actions on several selected lines; columns by drag and drop.
-- New name, NøteCraft, and a new logo.
 - Interface improvements and fixes.
 
 ## 0.4.0 (2026-11-24)
 - New: dashboard and graph views, website export, ChatGPT, speaker names in meetings.
-- Improvements and fixes.
 
 ## 0.3.0 (2026-11-23)
 - New: imports from other note apps, tabs, presentation mode, reminders, formulas.
