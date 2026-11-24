@@ -2,7 +2,7 @@
 
 All notable changes are listed here. The format follows Keep a Changelog and the project follows semantic versioning.
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-11-24
 
 ### Changed
 - New name, **NøteCraft**, and a new logo. The command is `notecraft`; the data and settings folders carry the new name.
