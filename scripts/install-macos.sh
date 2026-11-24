@@ -11,8 +11,11 @@ DEST="${1:-/Applications}"
 scripts/bundle-macos.sh
 APP=target/NoteCraft.noindex/NoteCraft.app
 
-# ad-hoc signature: enough for a locally built app, avoids the damaged-app warning
-codesign --force --deep --sign - --identifier local.notecraft.app "$APP" 2>/dev/null || true
+# bundle-macos.sh signs with the stable "NoteCraft Local" certificate when present;
+# otherwise fall back to an ad-hoc signature (avoids the damaged-app warning)
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "NoteCraft Local"; then
+  codesign --force --deep --sign - --identifier local.notecraft.app "$APP" 2>/dev/null || true
+fi
 
 if [ "$DMG" = 1 ]; then
   # writable image first, so Finder can lay the window out (icons, size), then compress it

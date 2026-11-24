@@ -14,6 +14,7 @@ cp target/release/notecraft-mcp "$APP/Contents/MacOS/notecraft-mcp"
 cp target/release/notecraft "$APP/Contents/MacOS/notecraft-cli"
 # the .icns is rendered from assets/icon.svg at build time and embedded in the binary
 "$APP/Contents/MacOS/NoteCraft" --export-icns "$APP/Contents/Resources/NoteCraft.icns"
+cp LICENSE THIRD_PARTY_MODELS.md THIRD_PARTY_FONTS.md "$APP/Contents/Resources/"
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
