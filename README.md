@@ -49,4 +49,10 @@ More views: [table](docs/screenshots/table.png), [calendar](docs/screenshots/cal
 
 ## License
 
-Personal, non-commercial use. All rights reserved. See [LICENSE](LICENSE).
+NoteCraft is free for any non-commercial use (personal, study, hobby, research, charities, schools), under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, modify and share it under those terms. Commercial use requires a separate licence from the author.
+
+Third-party components keep their own licences, listed in [THIRD_PARTY_MODELS.md](THIRD_PARTY_MODELS.md) and [THIRD_PARTY_FONTS.md](THIRD_PARTY_FONTS.md).
+
+Contributions are welcome. By submitting one, you agree that it is released under the same licence and that the author may relicense it, including commercially.
+
+The name and logo "NoteCraft" are not covered by the licence.

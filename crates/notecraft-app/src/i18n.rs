@@ -85,7 +85,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("workspace_too_broad", "Pick a dedicated folder, not your home, Desktop, Documents or Downloads.", "Choisissez un dossier dédié, pas votre dossier personnel, le Bureau, Documents ou Téléchargements."),
     ("about_title", "About NøteCraft", "À propos de NøteCraft"),
     ("version", "Version", "Version"),
-    ("about_license", "Personal use, all rights reserved", "Usage personnel, tous droits réservés"),
+    ("about_license", "Free for non-commercial use (PolyForm Noncommercial)", "Libre pour un usage non commercial (PolyForm Noncommercial)"),
     ("your_data", "Your data", "Vos données"),
     ("log_file", "Logs", "Journal"),
     ("copy_system_info", "Copy system information", "Copier les informations système"),

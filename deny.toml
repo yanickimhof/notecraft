@@ -32,7 +32,7 @@ allow = [
 ]
 
 [licenses.private]
-# the workspace crates are not published and carry the personal-use LICENSE file
+# the workspace crates are not published and carry the PolyForm Noncommercial LICENSE file
 ignore = true
 
 [bans]

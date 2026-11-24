@@ -31,7 +31,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>NSMicrophoneUsageDescription</key><string>NoteCraft records the microphone only when you start a meeting. The audio is transcribed on this Mac and is not kept.</string>
   <key>NSAudioCaptureUsageDescription</key><string>NoteCraft records what this Mac plays, for example the other people in a video call, only when you choose it in a meeting block. The audio is transcribed on this Mac and is not kept.</string>
-  <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Yanick Imhof. Personal use, all rights reserved.</string>
+  <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Yanick Imhof. Free for non-commercial use (PolyForm Noncommercial 1.0.0).</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleLocalizations</key><array><string>en</string><string>fr</string></array>
