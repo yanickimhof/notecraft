@@ -1,0 +1,15 @@
+[package]
+name = "notecraft-ai"
+description = "AI writing help for NoteCraft: local Ollama or the Claude API, prompts, keychain storage"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+ureq = { version = "3", default-features = false, features = ["rustls", "json"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"

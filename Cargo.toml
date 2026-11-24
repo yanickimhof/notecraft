@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/notecraft-core", "crates/notecraft-cli", "crates/notecraft-app", "crates/notecraft-mcp", "crates/notecraft-ai", "crates/notecraft-meeting"]
+default-members = ["crates/notecraft-core", "crates/notecraft-cli", "crates/notecraft-app", "crates/notecraft-mcp", "crates/notecraft-ai", "crates/notecraft-meeting"]
+
+[workspace.package]
+version = "0.5.0"
+edition = "2021"
+license-file = "LICENSE"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml_ng = "0.10"
+rusqlite = { version = "0.43", features = ["bundled"] }
+jiff = "0.2"
+tempfile = "3"
+
+[profile.release]
+opt-level = 3

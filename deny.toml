@@ -1,0 +1,48 @@
+# cargo-deny: dependency policy checked in CI (advisories, licenses, sources).
+
+[advisories]
+version = 2
+ignore = [
+    # ttf-parser is unmaintained (no vulnerability). It is pulled in by krilla (PDF export) and only
+    # reads the fonts bundled in the binary, never a file from the person. Revisit when krilla moves to skrifa.
+    "RUSTSEC-2026-0192",
+]
+
+[licenses]
+version = 2
+# Permissive licenses only. A dependency under a copyleft license would need a decision first.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "OFL-1.1",
+    # file-level copyleft, used unmodified by a transitive dependency of the menu bar icon (option-ext)
+    "MPL-2.0",
+    "Ubuntu-font-1.0",
+]
+
+[licenses.private]
+# the workspace crates are not published and carry the personal-use LICENSE file
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# cpal: see crates/notecraft-meeting/Cargo.toml (system audio capture fix not yet released)
+allow-git = ["https://github.com/RustAudio/cpal"]
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

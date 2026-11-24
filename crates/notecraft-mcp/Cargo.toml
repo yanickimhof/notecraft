@@ -1,0 +1,21 @@
+[package]
+name = "notecraft-mcp"
+description = "MCP server (stdio) exposing a NoteCraft workspace to AI assistants"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "notecraft-mcp"
+path = "src/main.rs"
+
+[dependencies]
+notecraft-core = { path = "../notecraft-core" }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,21 @@
+/target
+.env
+*.token
+/export
+.DS_Store
+
+# Craft Anything working files (analysis of the original app, logs, captures): never commit
+/_to_delete
+/agent-session.jsonl
+/build-activity.log
+/capture/
+/craft.json
+/feed.json
+/inbox/
+/investigation.cany/
+/usage.json
+/shots
+
+# Craft Anything check artifacts
+/checks/
+/pinned/

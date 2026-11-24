@@ -1,0 +1,284 @@
+/// Draws a page that holds every kind of block for several frames, with pointer clicks and
+/// key presses in between, and checks that nothing panics and nothing gets lost.
+#[test]
+fn a_page_with_every_block_kind_survives_frames_clicks_and_keys() {
+    let md = "# Title\n\nplain <span style=\"color:red\">red</span> text\n\n- [ ] todo\n\n> quote\n\n$$\nx^2-4x+1=0\n$$\n\n```mermaid\ngraph TD\n A[Start] --> B{Choice}\n B -->|yes| C[Done]\n D --> D\n```\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n```rust\nfn main() {}\n```\n";
+    let mut blocks = notecraft_core::blocks::from_markdown(md);
+    let before = notecraft_core::blocks::to_markdown(&blocks);
+    let pal = Palette::light();
+    let ctx = egui::Context::default();
+    theme::apply(&ctx, &pal);
+    let titles = HashMap::new();
+    let meeting = crate::meeting::View::default();
+    let embed = |_: &mut Ui, _: u64, _: &str| {};
+    let mut state = EditorState::default();
+    let root = Path::new(".");
+    let mut events_per_frame: Vec<Vec<egui::Event>> = vec![vec![]; 3];
+    for (x, y) in [(300.0, 120.0), (300.0, 260.0), (300.0, 420.0), (300.0, 560.0), (300.0, 700.0), (700.0, 900.0)] {
+        let p = egui::pos2(x, y);
+        events_per_frame.push(vec![
+            egui::Event::PointerMoved(p),
+            egui::Event::PointerButton {
+                pos: p,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos: p,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::NONE,
+            },
+        ]);
+        events_per_frame.push(vec![egui::Event::Text("x".into())]);
+        events_per_frame.push(vec![egui::Event::Key {
+            key: Key::Tab,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }]);
+        events_per_frame.push(vec![egui::Event::Key {
+            key: Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        }]);
+        events_per_frame.push(vec![]);
+    }
+    for events in events_per_frame {
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(900.0, 1000.0))),
+            events,
+            ..Default::default()
+        };
+        let mut full = ctx.run_ui(raw, |root_ui| {
+            egui::ScrollArea::vertical().show(root_ui, |ui| {
+                let env = Env {
+                    pal: &pal,
+                    lang: Lang::En,
+                    root,
+                    titles: &titles,
+                    key: "smoke",
+                    meeting: &meeting,
+                    db_titles: &[],
+                    embed: &embed,
+                };
+                state.show(ui, &mut blocks, &env);
+            });
+        });
+        full.textures_delta.clear();
+    }
+    assert!(!blocks.is_empty());
+    // the first drawing must not have changed the content by itself
+    let again = notecraft_core::blocks::from_markdown(&before);
+    assert_eq!(again.len(), notecraft_core::blocks::from_markdown(&notecraft_core::blocks::to_markdown(&again)).len());
+}
+
+#[test]
+fn every_slash_item_has_a_title_and_description_in_both_languages() {
+    for it in SLASH_ITEMS {
+        for prefix in ["blk_", "desc_"] {
+            let key = format!("{prefix}{}", it.key);
+            for lang in [Lang::En, Lang::Fr] {
+                assert_ne!(tr(lang, &key), key.as_str(), "missing translation {key}");
+            }
+        }
+    }
+}
+
+use super::*;
+
+#[test]
+fn link_under_the_caret_is_found() {
+    let text = "see [the docs](https://x.org/a) now";
+    // inside the label
+    let (label, d0, d1) = link_target_at(text, 8).expect("link");
+    assert_eq!(&text[d0..d1], "https://x.org/a");
+    assert_eq!(&text[label..label + 3], "the");
+    // outside any link
+    assert!(link_target_at(text, 1).is_none());
+    assert!(link_target_at(text, 33).is_none());
+}
+
+#[test]
+fn typed_addresses_are_made_usable() {
+    assert_eq!(normalize_url("example.com"), "https://example.com");
+    assert_eq!(normalize_url(" https://a.b/c "), "https://a.b/c");
+    assert_eq!(normalize_url("me@example.com"), "mailto:me@example.com");
+    assert_eq!(normalize_url("notes/page.md"), "notes/page.md");
+    assert_eq!(normalize_url("./page.md"), "./page.md");
+}
+
+#[test]
+fn slash_detection() {
+    assert_eq!(slash_query("/he", 3), Some((0, "he".into())));
+    assert_eq!(slash_query("hello /to", 9), Some((6, "to".into())));
+    assert_eq!(slash_query("a/b", 3), None);
+    assert_eq!(slash_query("/he llo", 7), None);
+}
+
+#[test]
+fn slash_items_in_requested_order() {
+    let keys: Vec<_> = filter_items("", &SlashMode::Insert).iter().map(|i| i.key).collect();
+    assert_eq!(
+        keys,
+        vec![
+            "text",
+            "page",
+            "todo",
+            "h1",
+            "h2",
+            "h3",
+            "bulleted",
+            "numbered",
+            "toggle",
+            "quote",
+            "divider",
+            "toc",
+            "columns2",
+            "columns3",
+            "callout",
+            "code",
+            "link",
+            "image",
+            "file",
+            "mermaid",
+            "equation",
+            "bookmark",
+            "simple_table",
+            "table",
+            "board",
+            "list",
+            "dbview",
+            "meeting"
+        ]
+    );
+}
+
+#[test]
+fn slash_filtering_in_both_languages() {
+    assert_eq!(filter_items("head", &SlashMode::Insert)[0].key, "h1");
+    assert_eq!(filter_items("titre 2", &SlashMode::Insert)[0].key, "h2");
+    assert_eq!(filter_items("kanban", &SlashMode::Insert)[0].key, "board");
+    assert!(filter_items("zzzz", &SlashMode::Insert).is_empty());
+    assert!(filter_items("", &SlashMode::TurnInto).iter().all(|i| i.key != "image"));
+}
+
+#[test]
+fn number_labels() {
+    assert_eq!(number_label(3, 0), "3.");
+    assert_eq!(number_label(2, 1), "b.");
+    assert_eq!(number_label(4, 2), "iv.");
+}
+
+/// The column controls show only while the pointer is over the columns, and work when they do.
+#[test]
+fn the_column_bar_shows_on_hover_and_adds_a_column() {
+    use egui_kittest::kittest::Queryable;
+    let md = "before\n\n<!--columns-->\n\nleft\n\n<!--column-->\n\nright\n\n<!--/columns-->\n\nafter\n";
+    let blocks = notecraft_core::blocks::from_markdown(md);
+    let mut h = egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
+        |ui, (state, blocks): &mut (EditorState, Vec<Block>)| {
+            let pal = Palette::light();
+            let titles = HashMap::new();
+            let meeting = crate::meeting::View::default();
+            let embed = |_: &mut Ui, _: u64, _: &str| {};
+            let env = Env {
+                pal: &pal,
+                lang: Lang::En,
+                root: Path::new("."),
+                titles: &titles,
+                key: "cols",
+                meeting: &meeting,
+                db_titles: &[],
+                embed: &embed,
+            };
+            state.show(ui, blocks, &env);
+        },
+        (EditorState::default(), blocks),
+    );
+    theme::install_fonts(&h.ctx);
+    h.run();
+    assert!(h.query_by_label_contains("Columns").is_none(), "no bar until the pointer comes");
+    // find where the columns are: the text of the left one
+    let left = h.get_all_by_value("left").next().unwrap().rect();
+    h.hover_at(left.center());
+    h.run();
+    h.run();
+    assert!(h.query_by_label_contains("Columns").is_some(), "the bar shows over the columns");
+    h.get_by_label("Add a column").click();
+    h.run();
+    let md = notecraft_core::blocks::to_markdown(&h.state().1);
+    assert_eq!(md.matches("<!--column-->").count(), 2, "a third column was added: {md}");
+    // away from the columns the bar goes again
+    h.hover_at(egui::pos2(790.0, 590.0));
+    h.run();
+    h.run();
+    assert!(h.query_by_label_contains("Columns").is_none(), "the bar hides when the pointer leaves");
+}
+
+#[test]
+fn a_speaker_is_renamed_with_one_click_and_enter() {
+    use egui_kittest::kittest::Queryable;
+    let mut blocks =
+        vec![Block::new(BlockKind::Meeting, "Weekly"), Block::new(BlockKind::Toggle { open: true }, "Transcript")];
+    for l in ["Speaker 1 : hello", "Me : hi", "Speaker 1 : next"] {
+        blocks.push(Block::new(BlockKind::Paragraph, l).with_depth(1));
+    }
+    let mut h = egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
+        |ui, (state, blocks, acts): &mut (EditorState, Vec<Block>, Vec<crate::meeting::MeetingAction>)| {
+            let pal = Palette::light();
+            let titles = HashMap::new();
+            let meeting = crate::meeting::View::default();
+            let embed = |_: &mut Ui, _: u64, _: &str| {};
+            let env = Env {
+                pal: &pal,
+                lang: Lang::En,
+                root: Path::new("."),
+                titles: &titles,
+                key: "spk",
+                meeting: &meeting,
+                db_titles: &[],
+                embed: &embed,
+            };
+            for a in state.show(ui, blocks, &env).actions {
+                if let Action::Meeting(m) = a {
+                    acts.push(m);
+                }
+            }
+        },
+        (EditorState::default(), blocks, Vec::new()),
+    );
+    theme::install_fonts(&h.ctx);
+    h.run();
+    assert!(h.query_by_label("Speaker 1").is_some(), "the speakers are listed");
+    assert!(h.query_by_label("Me").is_some());
+    h.get_by_label("Speaker 1").click();
+    h.run();
+    h.run();
+    h.event(egui::Event::Key {
+        key: Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    });
+    h.event(egui::Event::Text("Anna".into()));
+    h.event(egui::Event::Key {
+        key: Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    h.run();
+    h.run();
+    let acts = &h.state().2;
+    assert!(
+        matches!(acts.as_slice(), [crate::meeting::MeetingAction::RenameSpeaker(_, old, new)] if old == "Speaker 1" && new == "Anna"),
+        "{acts:?}"
+    );
+}
