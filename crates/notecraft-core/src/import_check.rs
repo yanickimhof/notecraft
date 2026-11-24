@@ -303,10 +303,7 @@ mod tests {
         let (d, mut ws) = ws();
         let mut p = page_with(&mut ws, "Intro\n");
         p.blocks.push(Block::new(BlockKind::Image { path: "assets/gone.png".into() }, "x".to_string()));
-        p.blocks.push(Block::new(
-            BlockKind::File { path: "assets/f.pdf".into() },
-            "f.pdf".to_string(),
-        ));
+        p.blocks.push(Block::new(BlockKind::File { path: "assets/f.pdf".into() }, "f.pdf".to_string()));
         assert_eq!(kinds(&check_page(&ws, &p)), vec![Problem::MissingFile, Problem::MissingFile]);
         fs::create_dir_all(d.path().join("assets")).unwrap();
         fs::write(d.path().join("assets/gone.png"), b"png").unwrap();
