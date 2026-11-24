@@ -19,7 +19,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 
 ### Added
 - Dashboard view for databases and a graph of the links between pages.
-- Export a workspace as a website.
 - Meetings: speakers told apart and renamed, custom vocabulary.
 - ChatGPT as a third AI engine.
 - Import check to spot what an import broke.

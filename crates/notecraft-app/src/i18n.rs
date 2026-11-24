@@ -172,8 +172,6 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("rename_speaker_hint", "Click to rename; an existing name merges the two", "Cliquer pour renommer ; un nom existant fusionne les deux"),
     ("speaker_me", "Me", "Moi"),
     ("speaker_others", "Speaker", "Interlocuteur"),
-    ("export_site", "Export as a website…", "Exporter en site web…"),
-    ("site_skipped", "locked pages left out", "pages verrouillées non exportées"),
     ("remind_me", "Remind me…", "Me le rappeler…"),
     ("reminders", "Reminders", "Rappels"),
     ("graph", "Graph", "Graphe"),

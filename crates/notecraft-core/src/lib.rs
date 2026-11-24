@@ -51,7 +51,6 @@ pub mod render;
 pub mod sample;
 pub mod search;
 pub mod second_brain;
-pub mod site;
 pub mod snapshot;
 pub mod solve;
 pub mod sync;

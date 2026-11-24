@@ -851,25 +851,6 @@ impl NcApp {
         }
     }
 
-    /// Write the workspace as a static website (one HTML file per page, an index) into a folder.
-    pub fn export_site(&mut self) {
-        self.flush_save();
-        let Some(dir) = rfd::FileDialog::new().set_title(self.t("export_site")).pick_folder() else { return };
-        let Some(ws) = &self.ws else { return };
-        let name = ws.root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        match notecraft_core::site::export_site(ws, &dir, &name) {
-            Ok(r) => {
-                crate::app::system::reveal(&dir);
-                let mut msg = format!("{} {} ({})", self.t("exported"), dir.display(), r.pages);
-                if r.skipped > 0 {
-                    msg.push_str(&format!(" · {} {}", r.skipped, self.t("site_skipped")));
-                }
-                self.notify(msg);
-            }
-            Err(e) => self.notify(e.to_string()),
-        }
-    }
-
     pub fn trash_doc(&mut self, doc: &DocId) {
         self.flush_save();
         if let Some(ws) = self.ws.as_mut() {

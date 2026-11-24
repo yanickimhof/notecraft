@@ -31,7 +31,6 @@ A workspace is a folder you choose. Each page is a Markdown file inside it, so y
 - **Diagrams** (`/mermaid`): flowcharts, sequence diagrams, pie charts and state diagrams drawn from text.
 - **Graph** (sidebar): the links between your pages, draggable and zoomable.
 - **Dashboard** (database view): totals, averages and distributions.
-- **Export as a website** (workspace menu): a folder of HTML pages you can host anywhere.
 
 ## Databases
 

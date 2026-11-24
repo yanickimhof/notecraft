@@ -78,13 +78,6 @@ fn run(args: &[String]) -> Result<(), String> {
             let n = import_export::export_workspace(&ws, &PathBuf::from(&args[2])).map_err(|e| e.to_string())?;
             println!("exported {n} files");
         }
-        Some("site") if args.len() == 3 => {
-            let ws = open(&args[1])?;
-            let name = PathBuf::from(&args[1]).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let r =
-                notecraft_core::site::export_site(&ws, &PathBuf::from(&args[2]), &name).map_err(|e| e.to_string())?;
-            println!("wrote {} pages ({} locked pages left out)", r.pages, r.skipped);
-        }
         Some("rebody") if (4..=5).contains(&args.len()) => {
             let mut ws = open(&args[1])?;
             let row_id =

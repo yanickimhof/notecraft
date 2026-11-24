@@ -110,9 +110,6 @@ impl NcApp {
             if ui.button(tr(lang, "export_workspace")).clicked() {
                 action = Some("export");
             }
-            if ui.button(tr(lang, "export_site")).clicked() {
-                action = Some("site");
-            }
             if ui.button(tr(lang, "close_workspace")).clicked() {
                 action = Some("close");
             }
@@ -123,7 +120,6 @@ impl NcApp {
         match action {
             Some("open") => self.pick_workspace(),
             Some("export") => self.export_workspace(),
-            Some("site") => self.export_site(),
             Some("close") => {
                 self.close_workspace();
                 return;
