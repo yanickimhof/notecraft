@@ -5,22 +5,15 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 ## [0.5.0] - 2026-11-24
 
 ### Added
-- **AI**: Grok as a fourth engine; engines are chosen with icons, and the model menu is grouped by family, newest first.
-- **Editor**: actions on several selected lines (turn into, colour, group in a section, copy, cut, duplicate, move, delete); a text colour and a background colour can be combined; dropping a line beside another makes columns.
-- **Assistant (MCP)**: a simpler settings page.
+- Grok as a fourth AI engine.
+- Actions on several selected lines at once; columns by dragging a line beside another.
 
 ### Changed
 - New name, **NøteCraft**, and a new logo. The command is `notecraft`; the data and settings folders carry the new name.
-- Rich Markdown written by assistants (callouts, columns, colours, tables, toggles) is converted by a generic converter.
-- Backup settings are reached from the Backups row.
-
-### Fixed
-- Several small issues with selections, colours and drag and drop in the editor.
-- The Keychain permission is kept across updates of the app.
+- Interface improvements and fixes.
 
 ### Removed
-- The sample workspace (welcome screen, workspace menu and `notecraft sample`).
-- The import of one specific application's exports and the `notecraft restore-html` command. The other imports are unchanged.
+- The sample workspace and the import of one specific application's exports.
 
 ## [0.4.0] - 2026-11-24
 
