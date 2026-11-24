@@ -467,8 +467,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("nc-e2e-vocab-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let (aiff, wav) = (dir.join("v.aiff"), dir.join("v.wav"));
-        let text = "Le dossier de non-conformité de la villa Osiris à Echallens est certifié Minergie, \
-                    et l'entreprise Riedo-Clima doit refaire la ventilation.";
+        let text = "Le dossier de non-conformité de la villa Orion à Lausanne est certifié Minergie, \
+                    et l'entreprise Acme-Clima doit refaire la ventilation.";
         let ok =
             Command::new("say").args(["-v", "Thomas", "-o"]).arg(&aiff).arg(text).output().map(|o| o.status.success());
         let conv = Command::new("afconvert")
@@ -508,10 +508,9 @@ mod tests {
             out
         };
         let without = run("");
-        let with = run("Osiris, Minergie, Riedo-Clima, Echallens");
+        let with = run("Orion, Minergie, Acme-Clima, Lausanne");
         eprintln!("without vocabulary: {without}\nwith vocabulary:    {with}");
-        let hits =
-            |s: &str| ["Osiris", "Minergie", "Riedo-Clima", "Echallens"].iter().filter(|w| s.contains(*w)).count();
+        let hits = |s: &str| ["Orion", "Minergie", "Acme-Clima", "Lausanne"].iter().filter(|w| s.contains(*w)).count();
         assert!(hits(&with) >= hits(&without), "the vocabulary made it worse: {without:?} / {with:?}");
         // the small test model still gets some accented names wrong; the vocabulary must at least fix some
         assert!(
@@ -530,10 +529,10 @@ mod tests {
     #[test]
     fn the_vocabulary_is_cleaned_and_kept_in_order() {
         assert_eq!(
-            vocabulary_terms("Osiris, Minergie ;  Riedo-Clima\n\n osiris ,, Kloos  Menuiserie "),
-            vec!["Osiris", "Minergie", "Riedo-Clima", "Kloos Menuiserie"]
+            vocabulary_terms("Orion, Minergie ;  Acme-Clima\n\n orion ,, Dupont  Menuiserie "),
+            vec!["Orion", "Minergie", "Acme-Clima", "Dupont Menuiserie"]
         );
-        assert_eq!(vocabulary_prompt("Osiris, Minergie"), "Osiris, Minergie");
+        assert_eq!(vocabulary_prompt("Orion, Minergie"), "Orion, Minergie");
         assert_eq!(vocabulary_prompt("  ,  "), "");
         assert_eq!(vocabulary_prompt(""), "");
     }
@@ -551,12 +550,12 @@ mod tests {
 
     #[test]
     fn a_repeated_hint_is_dropped_but_real_speech_is_kept() {
-        let terms = vocabulary_terms("Osiris, Minergie, Riedo-Clima");
-        assert!(echoes_vocabulary("Osiris, Minergie, Riedo-Clima.", &terms));
-        assert!(echoes_vocabulary("Minergie Osiris", &terms));
+        let terms = vocabulary_terms("Orion, Minergie, Acme-Clima");
+        assert!(echoes_vocabulary("Orion, Minergie, Acme-Clima.", &terms));
+        assert!(echoes_vocabulary("Minergie Orion", &terms));
         // one word alone can be said for real
-        assert!(!echoes_vocabulary("Osiris.", &terms));
-        assert!(!echoes_vocabulary("Le dossier Osiris est prêt.", &terms));
+        assert!(!echoes_vocabulary("Orion.", &terms));
+        assert!(!echoes_vocabulary("Le dossier Orion est prêt.", &terms));
         assert!(!echoes_vocabulary("Bonjour à tous", &[]));
     }
 
@@ -567,12 +566,12 @@ mod tests {
         assert_eq!(choose_engine("auto", Some("en"), "", true), Parakeet);
         assert_eq!(choose_engine("auto", Some("fr"), "", true), Whisper);
         assert_eq!(choose_engine("auto", None, "", true), Whisper, "language not known yet");
-        assert_eq!(choose_engine("auto", Some("en"), "Osiris, Minergie", true), Whisper);
+        assert_eq!(choose_engine("auto", Some("en"), "Orion, Minergie", true), Whisper);
         assert_eq!(choose_engine("auto", Some("en"), " , ;", true), Parakeet, "an empty vocabulary is none");
         assert_eq!(choose_engine("auto", Some("en"), "", false), Whisper, "not downloaded");
         // forced
         assert_eq!(choose_engine("whisper", Some("en"), "", true), Whisper);
-        assert_eq!(choose_engine("parakeet", Some("fr"), "Osiris", true), Parakeet);
+        assert_eq!(choose_engine("parakeet", Some("fr"), "Orion", true), Parakeet);
         assert_eq!(choose_engine("parakeet", Some("en"), "", false), Whisper, "never without its files");
         // an unknown value behaves like automatic
         assert_eq!(choose_engine("", Some("en"), "", true), Parakeet);

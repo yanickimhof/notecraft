@@ -48,10 +48,10 @@ const WORDS: &[&str] = &[
     "gamma",
     "delta",
     "orion",
-    "osiris",
-    "kudelski",
-    "sicpa",
-    "echallens",
+    "atlas",
+    "nova",
+    "helios",
+    "geneva",
     "vevey",
     "lausanne",
     "aigle",
@@ -154,7 +154,7 @@ pub fn run(root: &Path, pages: usize, rows: usize) -> Result<(), String> {
     row(&format!("open {pages} pages + {rows} rows (index kept)"), reopen, "ms", Some(1000.0));
     row("memory after open", rss_mb(), "MB", Some(200.0));
 
-    let queries = ["projet", "budget client", "sécurité capteur", "osiris", "réunion alpha", "zzzzz"];
+    let queries = ["projet", "budget client", "sécurité capteur", "atlas", "réunion alpha", "zzzzz"];
     let t = Instant::now();
     let mut hits = 0;
     for _ in 0..5 {

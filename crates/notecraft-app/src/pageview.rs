@@ -86,6 +86,10 @@ impl NcApp {
                                     self.row_props_ui(ui, db, t, true);
                                 }
                                 self.editor_ui(ui, &target);
+                                if let Target::Doc(DocId::Page(id)) = &target {
+                                    let id = id.clone();
+                                    self.subpages_ui(ui, &id);
+                                }
                             }
                         }
                         ui.add_space(120.0);
@@ -93,6 +97,46 @@ impl NcApp {
                 });
             },
         );
+    }
+
+    /// Links to the sub-pages of a page, listed below its content.
+    fn subpages_ui(&mut self, ui: &mut Ui, id: &str) {
+        let pal = self.pal;
+        let lang = self.prefs.lang;
+        let Some(ws) = &self.ws else { return };
+        // sub-pages already linked in the body (pages imported with their links) are not listed twice
+        let linked = |title: &str| {
+            let tag = format!("[[{title}]]");
+            ws.pages.get(id).is_some_and(|p| p.blocks.iter().any(|b| b.text.contains(&tag)))
+        };
+        let kids: Vec<_> = ws.children(Some(id)).into_iter().filter(|k| !linked(&k.title)).collect();
+        if kids.is_empty() {
+            return;
+        }
+        let mut go = None;
+        ui.add_space(18.0);
+        ui.horizontal(|ui| {
+            ui.add_space(GUTTER);
+            ui.label(RichText::new(tr(lang, "subpages")).size(12.5).color(pal.text_faint));
+        });
+        for k in kids {
+            ui.horizontal(|ui| {
+                ui.add_space(GUTTER);
+                let icon = if k.icon.is_empty() { "📄".to_string() } else { k.icon.clone() };
+                if widgets::subtle_button(
+                    ui,
+                    RichText::new(format!("{icon}  {}", k.title)).size(14.5).color(pal.text),
+                    &pal,
+                )
+                .clicked()
+                {
+                    go = Some(k.doc.clone());
+                }
+            });
+        }
+        if let Some(g) = go {
+            self.navigate(Target::Doc(g));
+        }
     }
 
     fn cover_of(&self, t: &Target) -> String {
@@ -296,12 +340,8 @@ impl NcApp {
                         ui.horizontal(|ui| {
                             ui.add_space(GUTTER + 12.0);
                             let icon = if i.is_empty() { "📄".to_string() } else { i };
-                            if widgets::subtle_button(
-                                ui,
-                                RichText::new(format!("{icon}  {t}")).size(13.5).color(pal.text).underline(),
-                                &pal,
-                            )
-                            .clicked()
+                            if widgets::subtle_button(ui, widgets::icon_title(&icon, &t, 13.5, pal.text), &pal)
+                                .clicked()
                             {
                                 go = Some(l.clone());
                             }

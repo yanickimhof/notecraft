@@ -222,6 +222,21 @@ pub(crate) fn css_color(name: &str) -> Option<(&'static str, bool)> {
     Some((hex, bg))
 }
 
+/// Text and background colour (hex) of a block colour, which may carry both (`red bg-blue`).
+pub(crate) fn css_colors(name: &str) -> (Option<&'static str>, Option<&'static str>) {
+    let (mut text, mut bg) = (None, None);
+    for part in name.split_whitespace() {
+        if let Some((hex, is_bg)) = css_color(part) {
+            if is_bg {
+                bg = Some(hex);
+            } else {
+                text = Some(hex);
+            }
+        }
+    }
+    (text, bg)
+}
+
 fn html_runs(runs: &[Run]) -> String {
     let mut o = String::new();
     for r in runs {
@@ -285,12 +300,12 @@ pub fn to_html(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Optio
         if it.depth > 0 {
             style.push_str(&format!("margin-left:{}em;", f32::from(it.depth) * 1.5));
         }
-        if let Some((hex, bg)) = css_color(&it.color) {
-            style.push_str(&if bg {
-                format!("background:{hex};padding:2px 6px;border-radius:4px;")
-            } else {
-                format!("color:{hex};")
-            });
+        let (text_hex, bg_hex) = css_colors(&it.color);
+        if let Some(hex) = bg_hex {
+            style.push_str(&format!("background:{hex};padding:2px 6px;border-radius:4px;"));
+        }
+        if let Some(hex) = text_hex {
+            style.push_str(&format!("color:{hex};"));
         }
         let attr = if style.is_empty() { String::new() } else { format!(" style=\"{style}\"") };
         let prefix = match &it.marker {

@@ -5,6 +5,14 @@ use super::*;
 impl NcApp {
     // ------------------------------------------------------------- shortcuts
 
+    /// One window at a time: opening one closes the others, so none stays behind another.
+    pub fn close_windows(&mut self) {
+        self.settings_open = false;
+        self.reminders_open = false;
+        self.graph_open = false;
+        self.trash_open = false;
+    }
+
     pub(super) fn global_keys(&mut self, ctx: &egui::Context) {
         let cmd = Modifiers::COMMAND;
         let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
@@ -51,6 +59,7 @@ impl NcApp {
             }
         }
         if consume(cmd, Key::Comma) {
+            self.close_windows();
             self.settings_open = true;
         }
         // View menu zoom: Cmd+= / Cmd+Plus, Cmd+-, Cmd+0
@@ -196,6 +205,7 @@ impl NcApp {
                 let mut lock_vault = false;
                 let mut look_change: Option<(String, bool, bool)> = None;
                 let mut archive = false;
+                let mut to_top = false;
                 let (look, words) = match (&doc, self.ws.as_ref()) {
                     (DocId::Page(id), Some(w)) => (
                         w.pages.get(id).map(|p| (p.meta.font.clone(), p.meta.small_text, p.meta.full_width)),
@@ -284,6 +294,10 @@ impl NcApp {
                         if ui.checkbox(&mut { wide }, self.t("full_width")).clicked() {
                             look_change = Some((font.clone(), small, !wide));
                         }
+                        if ui.button(self.t("move_top")).clicked() {
+                            to_top = true;
+                            ui.close();
+                        }
                         if ui.button(self.t("archive")).clicked() {
                             archive = true;
                         }
@@ -309,6 +323,12 @@ impl NcApp {
                 if let (Some((font, small, wide)), DocId::Page(id)) = (look_change, &doc) {
                     let res = self.ws.as_mut().map(|w| w.set_page_look(id, &font, small, wide));
                     if let Some(Err(e)) = res {
+                        self.notify(e.to_string());
+                    }
+                }
+                if let (true, DocId::Page(id)) = (to_top, &doc) {
+                    self.flush_save();
+                    if let Some(Err(e)) = self.ws.as_mut().map(|w| w.move_to_top(id)) {
                         self.notify(e.to_string());
                     }
                 }

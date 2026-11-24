@@ -25,23 +25,124 @@ pub const DEFAULT_CLAUDE_MODEL: &str = "claude-sonnet-5-5";
 pub const DEFAULT_OPENAI_URL: &str = "https://api.openai.com";
 pub const DEFAULT_OPENAI_MODEL: &str = "gpt-4o";
 /// Shown in the model menu until the account answers with its own list (no key yet, offline).
+pub const DEFAULT_GROK_URL: &str = "https://api.x.ai";
+pub const DEFAULT_GROK_MODEL: &str = "grok-4";
+pub const GROK_FALLBACK_MODELS: &[&str] = &["grok-4", "grok-3", "grok-3-mini"];
 pub const OPENAI_FALLBACK_MODELS: &[&str] = &["gpt-4o", "gpt-4o-mini"];
 pub const CLAUDE_FALLBACK_MODELS: &[&str] = &["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"];
+
+/// The family of a model, for grouping a model list: (rank, label). The lower the rank, the more
+/// capable the family (Fable, then Opus, Sonnet, Haiku; GPT and Grok by generation).
+pub fn model_tier(m: &str) -> (u8, &'static str) {
+    let l = m.to_lowercase();
+    let has = |k: &str| l.contains(k);
+    if has("mythos") {
+        (0, "Mythos")
+    } else if has("fable") {
+        (1, "Fable")
+    } else if has("opus") {
+        (2, "Opus")
+    } else if has("sonnet") {
+        (3, "Sonnet")
+    } else if has("haiku") {
+        (4, "Haiku")
+    } else if l.starts_with("grok-4") {
+        (10, "Grok 4")
+    } else if l.starts_with("grok-3") {
+        (11, "Grok 3")
+    } else if l.starts_with("grok") {
+        (12, "Grok")
+    } else if l.starts_with("gpt-5") {
+        (20, "GPT-5")
+    } else if l.starts_with("gpt-4.1") || l.starts_with("gpt-4o") || l.starts_with("gpt-4") {
+        (21, "GPT-4")
+    } else if l.starts_with('o') && l.chars().nth(1).is_some_and(|c| c.is_ascii_digit()) {
+        (22, "Reasoning")
+    } else {
+        (30, "Other")
+    }
+}
+
+/// The models worth offering: Claude keeps only the newest version of each family; GPT and Grok keep
+/// only their newest generation. Older versions are not listed.
+pub fn current_models(models: &[String]) -> Vec<String> {
+    let sorted = sort_models(models);
+    let mut seen_claude: Vec<u8> = Vec::new();
+    let mut best_group: std::collections::HashMap<u8, u8> = std::collections::HashMap::new();
+    for m in &sorted {
+        let r = model_tier(m).0;
+        if (10..30).contains(&r) {
+            let e = best_group.entry(r / 10).or_insert(r);
+            *e = (*e).min(r);
+        }
+    }
+    sorted
+        .into_iter()
+        .filter(|m| {
+            let r = model_tier(m).0;
+            if r < 10 {
+                if seen_claude.contains(&r) {
+                    false
+                } else {
+                    seen_claude.push(r);
+                    true
+                }
+            } else if r < 30 {
+                best_group.get(&(r / 10)) == Some(&r)
+            } else {
+                true
+            }
+        })
+        .collect()
+}
+
+/// Sorts a model list by family, then newest version first (dates are ignored in the version).
+pub fn sort_models(models: &[String]) -> Vec<String> {
+    let version = |m: &str| -> Vec<u32> {
+        m.split(|c: char| !c.is_ascii_digit())
+            .filter(|t| !t.is_empty() && t.len() < 5)
+            .filter_map(|t| t.parse().ok())
+            .collect()
+    };
+    let mut v: Vec<String> = models.to_vec();
+    v.sort_by(|a, b| {
+        model_tier(a).0.cmp(&model_tier(b).0).then_with(|| version(b).cmp(&version(a))).then_with(|| a.cmp(b))
+    });
+    v.dedup();
+    v
+}
 pub const ANTHROPIC_VERSION: &str = "2023-06-01";
 pub const MAX_TOKENS: u32 = 2048;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Engine {
-    Ollama { url: String, model: String },
-    Claude { url: String, model: String, api_key: String },
-    OpenAi { url: String, model: String, api_key: String },
+    Ollama {
+        url: String,
+        model: String,
+    },
+    Claude {
+        url: String,
+        model: String,
+        api_key: String,
+    },
+    OpenAi {
+        url: String,
+        model: String,
+        api_key: String,
+    },
+    /// xAI's Grok, which speaks the same protocol as the OpenAI API.
+    Grok {
+        url: String,
+        model: String,
+        api_key: String,
+    },
 }
 
 impl Engine {
     /// True when using this engine sends text off this Mac.
     pub fn leaves_this_mac(&self) -> bool {
         match self {
-            Engine::Claude { .. } | Engine::OpenAi { .. } => true,
+            Engine::Claude { .. } | Engine::OpenAi { .. } | Engine::Grok { .. } => true,
             Engine::Ollama { url, .. } => !is_local_url(url),
         }
     }
@@ -51,6 +152,7 @@ impl Engine {
             Engine::Ollama { model, .. } => format!("Ollama · {model}"),
             Engine::Claude { model, .. } => format!("Claude · {model}"),
             Engine::OpenAi { model, .. } => format!("ChatGPT · {model}"),
+            Engine::Grok { model, .. } => format!("Grok · {model}"),
         }
     }
 }
@@ -270,6 +372,21 @@ pub fn claude_models(url: &str, api_key: &str, t: Timeouts) -> Result<Vec<String
 /// Models of the OpenAI API that can write text for this key (`GET /v1/models`), sorted by name.
 /// Embeddings, speech, image, moderation and realtime models are left out.
 pub fn openai_models(url: &str, api_key: &str, t: Timeouts) -> Result<Vec<String>, AiError> {
+    compatible_models(url, api_key, t, is_openai_chat_model)
+}
+
+/// Models of the xAI API (same protocol as OpenAI's): text models only, image and video ones left out.
+pub fn grok_models(url: &str, api_key: &str, t: Timeouts) -> Result<Vec<String>, AiError> {
+    compatible_models(url, api_key, t, is_grok_chat_model)
+}
+
+/// A model id of the xAI API that answers chat requests.
+pub fn is_grok_chat_model(id: &str) -> bool {
+    let l = id.to_lowercase();
+    l.starts_with("grok") && !["image", "imagine", "video"].iter().any(|w| l.contains(w))
+}
+
+fn compatible_models(url: &str, api_key: &str, t: Timeouts, keep: fn(&str) -> bool) -> Result<Vec<String>, AiError> {
     if api_key.trim().is_empty() {
         return Err(AiError::NoApiKey);
     }
@@ -288,7 +405,7 @@ pub fn openai_models(url: &str, api_key: &str, t: Timeouts) -> Result<Vec<String
                 .as_array()
                 .map(|a| a.iter().filter_map(|m| m["id"].as_str().map(String::from)).collect())
                 .unwrap_or_default();
-            names.retain(|n| is_openai_chat_model(n));
+            names.retain(|n| keep(n));
             names.sort();
             names.dedup();
             Ok(names)
@@ -451,7 +568,7 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
                 s => Err(AiError::Api(s, error_message(&body))),
             }
         }
-        Engine::OpenAi { url, model, api_key } => {
+        Engine::OpenAi { url, model, api_key } | Engine::Grok { url, model, api_key } => {
             if api_key.trim().is_empty() {
                 return Err(AiError::NoApiKey);
             }
@@ -478,6 +595,52 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn models_are_grouped_by_family_newest_first() {
+        let v: Vec<String> = [
+            "claude-sonnet-4-5-20250929",
+            "claude-opus-5",
+            "claude-haiku-5-5",
+            "claude-opus-5-5",
+            "claude-fable-5-2",
+            "claude-sonnet-5-5",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            sort_models(&v),
+            [
+                "claude-fable-5-2",
+                "claude-opus-5-5",
+                "claude-opus-5",
+                "claude-sonnet-5-5",
+                "claude-sonnet-4-5-20250929",
+                "claude-haiku-5-5"
+            ]
+        );
+    }
+
+    #[test]
+    fn only_current_models_are_listed() {
+        let v: Vec<String> = [
+            "claude-opus-4-8",
+            "claude-opus-5-5",
+            "claude-opus-5",
+            "claude-haiku-4-5-20251001",
+            "claude-haiku-5-5",
+            "grok-3",
+            "grok-4",
+            "gpt-4o",
+            "gpt-5",
+            "o3",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(current_models(&v), ["claude-opus-5-5", "claude-haiku-5-5", "grok-4", "gpt-5"]);
+    }
+
     use super::*;
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
@@ -655,6 +818,12 @@ mod tests {
         let e = Engine::OpenAi { url: "http://127.0.0.1:9".into(), model: "m".into(), api_key: " ".into() };
         assert_eq!(complete(&e, &prompt(), Timeouts::default()).unwrap_err(), AiError::NoApiKey);
         assert!(parse_openai(r#"{"choices":[]}"#).is_err());
+    }
+
+    #[test]
+    fn grok_model_filter_keeps_text_models() {
+        assert!(is_grok_chat_model("grok-4") && is_grok_chat_model("Grok-3-mini"));
+        assert!(!is_grok_chat_model("grok-2-image") && !is_grok_chat_model("gpt-4o"));
     }
 
     #[test]

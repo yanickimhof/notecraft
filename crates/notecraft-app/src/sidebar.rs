@@ -150,12 +150,15 @@ impl NcApp {
             self.finder = Some(crate::finder::Finder::new(crate::finder::FinderMode::Jump));
         }
         if nav_item(ui, &pal, Icon::General, tr(lang, "settings"), Some("⌘,")).clicked() {
+            self.close_windows();
             self.settings_open = true;
         }
         if nav_item(ui, &pal, Icon::Clock, tr(lang, "reminders"), None).clicked() {
+            self.close_windows();
             self.reminders_open = true;
         }
         if nav_item(ui, &pal, Icon::Graph, tr(lang, "graph"), None).clicked() {
+            self.close_windows();
             self.graph_open = true;
         }
         let import_resp = nav_item(ui, &pal, Icon::Import, tr(lang, "import"), None);
@@ -178,10 +181,21 @@ impl NcApp {
         if nav_item(ui, &pal, Icon::Plus, tr(lang, "new_page"), Some("⌘N")).clicked() {
             self.new_page(None);
         }
+        let has_brain = self.ws.as_ref().is_some_and(|w| w.pages.values().any(|p| p.meta.title == "Second cerveau"));
+        if !has_brain && nav_item(ui, &pal, Icon::Plus, tr(lang, "second_brain"), None).clicked() {
+            self.flush_save();
+            let res = self.ws.as_mut().map(notecraft_core::second_brain::create);
+            match res {
+                Some(Ok(id)) => self.navigate(Target::Doc(DocId::Page(id))),
+                Some(Err(e)) => self.notify_error("second brain", &e),
+                None => {}
+            }
+        }
         ui.add_space(10.0);
 
         let mut drop: Option<Drop> = None;
         let mut nav: Option<DocId> = None;
+        let mut nav_fav = false;
         egui::ScrollArea::vertical().auto_shrink([false, false]).max_height(ui.available_height() - 40.0).show(
             ui,
             |ui| {
@@ -192,6 +206,7 @@ impl NcApp {
                         let r = self.tree_row(ui, &f, 0, "fav", &mut drop, false);
                         if r {
                             nav = Some(f.doc.clone());
+                            nav_fav = true;
                         }
                     }
                     ui.add_space(10.0);
@@ -219,11 +234,13 @@ impl NcApp {
         // bottom: trash
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             if nav_item(ui, &pal, Icon::Trash, tr(lang, "trash"), None).clicked() {
+                self.close_windows();
                 self.trash_open = true;
             }
         });
 
         if let Some(d) = nav {
+            self.fav_nav_doc = if nav_fav { Some(d.clone()) } else { None };
             if ui.ctx().input(|i| i.modifiers.command) {
                 self.open_in_new_tab(Target::Doc(d));
             } else {
@@ -275,7 +292,8 @@ impl NcApp {
         let w = ui.available_width();
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, ROW_H), Sense::click_and_drag());
         let id_key = format!("{salt}:{}", item.doc.key());
-        let current = self.current.as_ref() == Some(&Target::Doc(item.doc.clone()));
+        let current = self.current.as_ref() == Some(&Target::Doc(item.doc.clone()))
+            && !(salt == "tree" && self.fav_nav_doc.as_ref() == Some(&item.doc));
         let hovered = resp.hovered() || ui.rect_contains_pointer(rect);
         if current {
             ui.painter().rect_filled(rect, CornerRadius::same(6), pal.active);
@@ -396,6 +414,12 @@ impl NcApp {
                 {
                     action = Some("fav");
                 }
+                if ui.button(tr(lang, "rename")).clicked() {
+                    action = Some("rename");
+                }
+                if ui.button(tr(lang, "move_page_to")).clicked() {
+                    action = Some("move");
+                }
                 if matches!(item.doc, DocId::Page(_)) && ui.button(tr(lang, "duplicate")).clicked() {
                     action = Some("dup");
                 }
@@ -419,11 +443,29 @@ impl NcApp {
                     let _ = ws.duplicate_page(p);
                 }
             }
+            Some("rename") => {
+                self.navigate(Target::Doc(item.doc.clone()));
+                self.focus_title = true;
+            }
+            Some("move") => {
+                self.move_query.clear();
+                self.move_doc = Some(item.doc.clone());
+            }
             Some("export") => self.export_doc(&item.doc.clone()),
             Some("trash") => self.trash_doc(&item.doc.clone()),
             _ => {}
         }
         resp.context_menu(|ui| {
+            if ui.button(tr(lang, "rename")).clicked() {
+                self.navigate(Target::Doc(item.doc.clone()));
+                self.focus_title = true;
+                ui.close();
+            }
+            if ui.button(tr(lang, "move_page_to")).clicked() {
+                self.move_query.clear();
+                self.move_doc = Some(item.doc.clone());
+                ui.close();
+            }
             if ui.button(tr(lang, "add_subpage")).clicked() {
                 if let DocId::Page(p) = &item.doc {
                     self.new_page(Some(p.clone()));
@@ -473,6 +515,89 @@ impl NcApp {
             }
         }
         clicked
+    }
+
+    /// "Move to…": pick the page this one goes under (or the top level).
+    pub fn move_dialog(&mut self, ctx: &egui::Context) {
+        use crate::widgets::menu_item;
+        let Some(doc) = self.move_doc.clone() else { return };
+        let pal = self.pal;
+        let lang = self.prefs.lang;
+        let Some(ws) = &self.ws else {
+            self.move_doc = None;
+            return;
+        };
+        let mut banned: Vec<String> = ws.descendants(&doc).iter().map(|d| d.id().to_string()).collect();
+        banned.push(doc.id().to_string());
+        // every page, in tree order, with its depth
+        let mut all: Vec<(String, String, String, usize)> = Vec::new();
+        let mut stack: Vec<(Option<String>, usize)> = vec![(None, 0)];
+        let mut order: Vec<(Option<String>, usize)> = Vec::new();
+        while let Some((parent, depth)) = stack.pop() {
+            order.push((parent.clone(), depth));
+            let mut kids = ws.children(parent.as_deref());
+            kids.reverse();
+            for k in kids {
+                if let DocId::Page(id) = &k.doc {
+                    if !banned.contains(id) {
+                        all.push((id.clone(), k.title.clone(), k.icon.clone(), depth));
+                        stack.push((Some(id.clone()), depth + 1));
+                    }
+                }
+            }
+        }
+        let _ = order;
+        let q = self.move_query.trim().to_lowercase();
+        let mut chosen: Option<Option<String>> = None;
+        let modal = egui::Modal::new(Id::unique("move-dialog")).show(ctx, |ui| {
+            ui.set_width(340.0);
+            ui.label(RichText::new(tr(lang, "move_page_to")).size(15.0).color(pal.text));
+            ui.add_space(8.0);
+            let te = ui.add(
+                egui::TextEdit::singleline(&mut self.move_query)
+                    .hint_text(tr(lang, "move_search"))
+                    .desired_width(f32::INFINITY),
+            );
+            te.request_focus();
+            ui.add_space(6.0);
+            egui::ScrollArea::vertical().max_height(300.0).auto_shrink([false, true]).show(ui, |ui| {
+                if q.is_empty() && menu_item(ui, &pal, tr(lang, "move_root"), false).clicked() {
+                    chosen = Some(None);
+                }
+                let mut shown = 0;
+                for (id, title, icon, depth) in &all {
+                    if !q.is_empty() && !title.to_lowercase().contains(&q) {
+                        continue;
+                    }
+                    shown += 1;
+                    if shown > 60 {
+                        break;
+                    }
+                    let pad = if q.is_empty() { "    ".repeat((*depth).min(3)) } else { String::new() };
+                    let icon = if icon.is_empty() { "📄" } else { icon.as_str() };
+                    if menu_item(ui, &pal, &format!("{pad}{icon}  {title}"), false).clicked() {
+                        chosen = Some(Some(id.clone()));
+                    }
+                }
+            });
+        });
+        let mut done = modal.should_close();
+        if let Some(target) = chosen {
+            if let Some(ws) = self.ws.as_mut() {
+                let n = ws.children(target.as_deref()).len();
+                if let Some(t) = &target {
+                    self.expanded.insert(DocId::Page(t.clone()).key());
+                }
+                if let Err(e) = ws.move_to(&doc, target.as_deref(), n) {
+                    self.notify(e.to_string());
+                }
+            }
+            done = true;
+        }
+        if done {
+            self.move_doc = None;
+            self.move_query.clear();
+        }
     }
 
     fn apply_drop(&mut self, d: Drop) {

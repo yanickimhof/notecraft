@@ -6,12 +6,14 @@
 pub const SERVICE: &str = "NoteCraft";
 pub const ACCOUNT: &str = "claude-api-key";
 pub const OPENAI_ACCOUNT: &str = "openai-api-key";
+pub const GROK_ACCOUNT: &str = "grok-api-key";
 
 /// The services that need a key; each has its own Keychain item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provider {
     Claude,
     OpenAi,
+    Grok,
 }
 
 impl Provider {
@@ -19,6 +21,7 @@ impl Provider {
         match self {
             Provider::Claude => ACCOUNT,
             Provider::OpenAi => OPENAI_ACCOUNT,
+            Provider::Grok => GROK_ACCOUNT,
         }
     }
 
@@ -27,6 +30,7 @@ impl Provider {
         match self {
             Provider::Claude => "ANTHROPIC_API_KEY",
             Provider::OpenAi => "OPENAI_API_KEY",
+            Provider::Grok => "XAI_API_KEY",
         }
     }
 }

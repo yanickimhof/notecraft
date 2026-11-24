@@ -24,9 +24,13 @@ impl NcApp {
         self.show_backlinks = false;
         self.icon_picker = false;
         // expand the sidebar down to the page
-        if let (Some(ws), Some(Target::Doc(d))) = (&self.ws, &self.current) {
-            for a in ws.breadcrumbs(d).iter().rev().skip(1) {
-                self.expanded.insert(a.key());
+        let from_fav = matches!((&self.fav_nav_doc, &self.current), (Some(f), Some(Target::Doc(d))) if f == d);
+        if !from_fav {
+            self.fav_nav_doc = None;
+            if let (Some(ws), Some(Target::Doc(d))) = (&self.ws, &self.current) {
+                for a in ws.breadcrumbs(d).iter().rev().skip(1) {
+                    self.expanded.insert(a.key());
+                }
             }
         }
     }

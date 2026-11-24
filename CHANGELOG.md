@@ -2,6 +2,20 @@
 
 All notable changes are listed here. The format follows Keep a Changelog and the project follows semantic versioning.
 
+## [0.5.1] - 2026-11-24
+
+### Added
+- **AI**: Grok as a fourth engine; engines are chosen with icons, and the model menu is grouped by family, newest first.
+- **Editor**: actions on several selected lines (turn into, colour, group in a section, copy, cut, duplicate, move, delete); a text colour and a background colour can be combined; dropping a line beside another makes columns.
+- **Assistant (MCP)**: a simpler settings page.
+
+### Changed
+- Backup settings are reached from the Backups row.
+
+### Fixed
+- Several small issues with selections, colours and drag and drop in the editor.
+- The Keychain permission is kept across updates of the app.
+
 ## [0.5.0] - 2026-11-24
 
 ### Changed

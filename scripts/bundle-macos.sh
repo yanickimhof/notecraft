@@ -50,4 +50,11 @@ No account, no tracking.\
 {\field{\*\fldinst HYPERLINK "https://github.com/yanickimhof/notecraft"}{\fldrslt github.com/yanickimhof/notecraft}}
 }
 RTF
+# A stable local signature keeps the Keychain permission across rebuilds. Without the "NoteCraft Local"
+# certificate the app stays ad-hoc signed and macOS asks for Keychain access after every rebuild.
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "NoteCraft Local"; then
+  codesign --force --deep --sign "NoteCraft Local" --identifier local.notecraft.app "$APP"
+  echo "Signed with NoteCraft Local"
+fi
+
 echo "Built $APP"

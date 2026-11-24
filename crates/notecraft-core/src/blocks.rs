@@ -149,9 +149,35 @@ pub struct Block {
 /// Colour names a block can take; each also exists with a `bg-` prefix for the background.
 pub const BLOCK_COLORS: [&str; 9] = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"];
 
-/// Whether `name` is a colour a block can carry (`red`, `bg-red`).
+/// Whether `name` is a colour a block can carry: `red`, `bg-red`, or both together (`red bg-blue`,
+/// one text colour and one background).
 pub fn is_block_color(name: &str) -> bool {
-    BLOCK_COLORS.contains(&name.strip_prefix("bg-").unwrap_or(name))
+    let parts: Vec<&str> = name.split(' ').collect();
+    let valid = |n: &str| BLOCK_COLORS.contains(&n.strip_prefix("bg-").unwrap_or(n));
+    match parts.as_slice() {
+        [a] => valid(a),
+        [a, b] => valid(a) && valid(b) && a.starts_with("bg-") != b.starts_with("bg-"),
+        _ => false,
+    }
+}
+
+/// Set the text colour (`bg` false) or the background (`bg` true) of a block colour and keep the
+/// other one. `pick` is a colour name (`red`, `bg-red`) or empty to clear that part.
+pub fn merge_color(current: &str, pick: &str, bg: bool) -> String {
+    let (mut text, mut back) = (String::new(), String::new());
+    for p in current.split_whitespace() {
+        if p.starts_with("bg-") {
+            back = p.to_string();
+        } else {
+            text = p.to_string();
+        }
+    }
+    if bg {
+        back = pick.to_string();
+    } else {
+        text = pick.to_string();
+    }
+    [text, back].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 impl Block {
@@ -260,6 +286,116 @@ pub fn move_block(blocks: &mut Vec<Block>, from: usize, to: usize) -> usize {
         blocks.insert(insert_at + k, b);
     }
     insert_at
+}
+
+/// Move the blocks `lo..hi` (a selection, each keeping its depth) so they land before index `to`
+/// (an index in the original list). Returns the new index of the first one.
+pub fn move_range(blocks: &mut Vec<Block>, lo: usize, hi: usize, to: usize) -> usize {
+    if to >= lo && to <= hi {
+        return lo;
+    }
+    let chunk: Vec<Block> = blocks.drain(lo..hi).collect();
+    let insert_at = if to > lo { to - chunk.len() } else { to };
+    for (k, b) in chunk.into_iter().enumerate() {
+        blocks.insert(insert_at + k, b);
+    }
+    insert_at
+}
+
+fn is_column_marker(k: &BlockKind) -> bool {
+    matches!(k, BlockKind::ColumnsStart | BlockKind::ColumnBreak | BlockKind::ColumnsEnd)
+}
+
+/// Drop block `from` (with its children) beside block `onto`, on its right: both end up side by side
+/// as columns, or, when `onto` is already in columns, the block becomes a new column after the one
+/// that holds `onto`. Returns the id of the moved block; nothing changes when it cannot be done.
+pub fn drop_beside(blocks: &mut Vec<Block>, from: usize, onto: usize) -> Option<u64> {
+    let end = subtree_end(blocks, from);
+    if (from..end).contains(&onto) || is_column_marker(&blocks[onto].kind) || is_column_marker(&blocks[from].kind) {
+        return None;
+    }
+    let id = blocks[from].id;
+    let mut v = blocks.clone();
+    let mut chunk: Vec<Block> = v.drain(from..end).collect();
+    let onto = if onto > from { onto - chunk.len() } else { onto };
+    let enclosing =
+        (0..=onto).rev().find_map(|s| column_layout(&v, s).filter(|(e, _)| *e > onto).map(|(e, f)| (s, e, f)));
+    let depth = match &enclosing {
+        Some((s, ..)) => v[*s].depth,
+        None => v[onto].depth,
+    };
+    let base = chunk[0].depth;
+    for b in &mut chunk {
+        b.depth = b.depth - base + depth;
+    }
+    match enclosing {
+        Some((_, e, firsts)) => {
+            if firsts.len() >= 5 {
+                return None;
+            }
+            let c = firsts.iter().rposition(|f| *f <= onto).unwrap_or(0);
+            let last = firsts.get(c + 1).map(|f| f - 1).unwrap_or(e);
+            let mut ins = vec![Block::new(BlockKind::ColumnBreak, "").with_depth(depth)];
+            ins.extend(chunk);
+            v.splice(last..last, ins);
+        }
+        None => {
+            let re = subtree_end(&v, onto);
+            let mut ins = vec![Block::new(BlockKind::ColumnBreak, "").with_depth(depth)];
+            ins.extend(chunk);
+            ins.push(Block::new(BlockKind::ColumnsEnd, "").with_depth(depth));
+            v.splice(re..re, ins);
+            v.insert(onto, Block::new(BlockKind::ColumnsStart, "").with_depth(depth));
+            // something to click on after the columns
+            let end_at = v.iter().rposition(|b| b.kind == BlockKind::ColumnsEnd).unwrap_or(0);
+            if end_at + 1 == v.len() {
+                v.push(Block::paragraph("").with_depth(depth));
+            }
+        }
+    }
+    tidy_columns(&mut v);
+    *blocks = v;
+    Some(id)
+}
+
+/// Clean up columns after a block left one: an empty column goes away, and columns left with a
+/// single column are unwrapped.
+pub fn tidy_columns(blocks: &mut Vec<Block>) {
+    let mut s = 0;
+    while s < blocks.len() {
+        let Some((e, firsts)) = column_layout(blocks, s) else {
+            s += 1;
+            continue;
+        };
+        let spans: Vec<(usize, usize)> =
+            firsts.iter().enumerate().map(|(c, f)| (*f, firsts.get(c + 1).map(|x| x - 1).unwrap_or(e))).collect();
+        let full = spans.iter().filter(|(a, b)| b > a).count();
+        if full == spans.len() && full >= 2 {
+            s = e + 1;
+            continue;
+        }
+        let mut remove: Vec<usize> = Vec::new();
+        if full >= 2 {
+            for (c, (a, b)) in spans.iter().enumerate() {
+                if b <= a {
+                    // its own break marker: before it, or after it for the first column
+                    remove.push(if c == 0 { *b } else { *a - 1 });
+                }
+            }
+        } else {
+            remove.push(s);
+            remove.extend(firsts.iter().skip(1).map(|f| f - 1));
+            remove.push(e);
+        }
+        remove.sort_unstable();
+        remove.dedup();
+        for k in remove.into_iter().rev() {
+            blocks.remove(k);
+        }
+        if blocks.is_empty() {
+            blocks.push(Block::paragraph(""));
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1044,6 +1180,60 @@ pub fn slides(blocks: &[Block]) -> Vec<std::ops::Range<usize>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dropping_a_block_beside_another_makes_columns() {
+        let mut v = vec![Block::paragraph("a"), Block::paragraph("b"), Block::paragraph("c")];
+        let moved = v[2].id;
+        assert_eq!(drop_beside(&mut v, 2, 0), Some(moved));
+        let kinds: Vec<BlockKind> = v.iter().map(|b| b.kind.clone()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                BlockKind::ColumnsStart,
+                BlockKind::Paragraph,
+                BlockKind::ColumnBreak,
+                BlockKind::Paragraph,
+                BlockKind::ColumnsEnd,
+                BlockKind::Paragraph
+            ]
+        );
+        assert_eq!((v[1].text.as_str(), v[3].text.as_str(), v[5].text.as_str()), ("a", "c", "b"));
+        // beside a block already in columns: a third column
+        let b_id = v[5].id;
+        assert_eq!(drop_beside(&mut v, 5, 1), Some(b_id));
+        let (end, firsts) = column_layout(&v, 0).unwrap();
+        assert_eq!(firsts.len(), 3);
+        assert_eq!(v[end - 1].text, "c");
+        assert_eq!(v[firsts[1]].text, "b");
+        // taking the last block out of a column removes that column, then the columns
+        let a_pos = v.iter().position(|x| x.text == "a").unwrap();
+        let n = v.len();
+        move_range(&mut v, a_pos, a_pos + 1, n);
+        tidy_columns(&mut v);
+        assert_eq!(column_layout(&v, 0).map(|(_, f)| f.len()), Some(2));
+        let c_pos = v.iter().position(|x| x.text == "c").unwrap();
+        let n = v.len();
+        move_range(&mut v, c_pos, c_pos + 1, n);
+        tidy_columns(&mut v);
+        assert!(v
+            .iter()
+            .all(|x| !matches!(x.kind, BlockKind::ColumnsStart | BlockKind::ColumnBreak | BlockKind::ColumnsEnd)));
+        assert_eq!(v.len(), 3);
+    }
+
+    #[test]
+    fn a_block_keeps_both_its_text_and_background_colours() {
+        assert_eq!(merge_color("bg-blue", "red", false), "red bg-blue");
+        assert_eq!(merge_color("red", "bg-blue", true), "red bg-blue");
+        assert_eq!(merge_color("red bg-blue", "", true), "red");
+        assert_eq!(merge_color("red bg-blue", "green", false), "green bg-blue");
+        assert!(is_block_color("red bg-blue") && !is_block_color("red green") && !is_block_color("red  bg-blue"));
+        let mut p = Block::paragraph("Hi");
+        p.color = "red bg-blue".into();
+        let back = from_markdown(&to_markdown(&[p]));
+        assert_eq!((back[0].text.as_str(), back[0].color.as_str()), ("Hi", "red bg-blue"));
+    }
+
     #[test]
     fn columns_round_trip_and_layout() {
         let md = "<!--columns-->\n\nleft\n\n<!--column-->\n\nright\n\n<!--/columns-->\n";

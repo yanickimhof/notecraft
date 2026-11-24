@@ -270,6 +270,8 @@ pub const SLASH_ITEMS: &[SlashItem] = &[
     },
     SlashItem { key: "columns2", glyph: "▥", aliases: &["columns", "2 columns", "colonnes", "two columns"] },
     SlashItem { key: "columns3", glyph: "▥", aliases: &["3 columns", "three columns", "trois colonnes"] },
+    SlashItem { key: "group_toggle", glyph: "▾", aliases: &["group", "section", "grouper", "wrap"] },
+    SlashItem { key: "group_callout", glyph: "▣", aliases: &["group", "frame", "encadrer", "wrap"] },
     SlashItem { key: "callout", glyph: "💡", aliases: &["callout", "note", "tip", "encadre"] },
     SlashItem { key: "code", glyph: "</>", aliases: &["code", "snippet", "```"] },
     SlashItem { key: "link", glyph: "↗", aliases: &["link", "mention", "lien", "[["] },
@@ -309,14 +311,33 @@ pub const SLASH_ITEMS: &[SlashItem] = &[
 ];
 
 /// Items that can turn an existing block into another type.
-const TURN_INTO: &[&str] =
-    &["text", "todo", "h1", "h2", "h3", "bulleted", "numbered", "toggle", "quote", "callout", "code"];
+const TURN_INTO: &[&str] = &[
+    "text",
+    "todo",
+    "h1",
+    "h2",
+    "h3",
+    "bulleted",
+    "numbered",
+    "toggle",
+    "quote",
+    "callout",
+    "code",
+    "group_toggle",
+    "group_callout",
+];
 
 pub fn filter_items(query: &str, mode: &SlashMode) -> Vec<&'static SlashItem> {
     let mut scored: Vec<(i32, usize, &'static SlashItem)> = SLASH_ITEMS
         .iter()
         .enumerate()
-        .filter(|(_, it)| *mode == SlashMode::Insert || TURN_INTO.contains(&it.key))
+        .filter(|(_, it)| {
+            if it.key.starts_with("group_") {
+                *mode == SlashMode::TurnInto
+            } else {
+                *mode == SlashMode::Insert || TURN_INTO.contains(&it.key)
+            }
+        })
         .filter_map(|(i, it)| {
             if query.is_empty() {
                 return Some((0, i, it));
@@ -676,7 +697,8 @@ enum Deferred {
     Slash(usize, &'static str),
     TurnInto(usize, &'static str),
     Delete(usize),
-    SetColor(usize, String),
+    /// Block, colour name (empty to clear), and whether it is the background.
+    SetColor(usize, String, bool),
     Duplicate(usize),
     Move(usize, bool),
     Open(String),
@@ -900,32 +922,73 @@ impl EditorState {
             }
         }
 
-        // drag and drop of blocks
+        // drag and drop of blocks: between two blocks, or on the right edge of one to make columns
         if let Some(payload) = egui::DragAndDrop::payload::<DragBlock>(&ctx) {
             if let Some(pointer) = ctx.pointer_interact_pos() {
+                let from_idx = blocks.iter().position(|b| b.id == payload.0);
+                let moving =
+                    from_idx.map(|f| self.multi_range(blocks, f).unwrap_or((f, blocks::subtree_end(blocks, f))));
+                // the right edge of a block (a column's edge in columns) is a side drop
+                let side = rects
+                    .iter()
+                    .find(|(_, r)| {
+                        pointer.y >= r.min.y
+                            && pointer.y <= r.max.y
+                            && pointer.x >= r.max.x - 80.0
+                            && pointer.x <= r.max.x + 10.0
+                    })
+                    .map(|(i, r)| (*i, *r))
+                    .filter(|(i, _)| {
+                        moving.is_some_and(|(a, b)| !(a..b).contains(i))
+                            && !matches!(
+                                blocks[*i].kind,
+                                BlockKind::ColumnsStart | BlockKind::ColumnBreak | BlockKind::ColumnsEnd
+                            )
+                            && !moving.is_some_and(|(a, b)| b - a > 1)
+                    });
                 let target =
                     rects.iter().find(|(_, r)| pointer.y < r.center().y).map(|(i, _)| *i).unwrap_or(blocks.len());
-                let y = rects
-                    .iter()
-                    .find(|(i, _)| *i == target)
-                    .map(|(_, r)| r.min.y - 1.0)
-                    .or_else(|| rects.last().map(|(_, r)| r.max.y + 1.0))
-                    .unwrap_or(pointer.y);
-                let x0 = rects.first().map(|(_, r)| r.min.x + gutter).unwrap_or(pointer.x);
-                ui.painter().line_segment(
-                    [egui::pos2(x0, y), egui::pos2(x0 + full_width - gutter, y)],
-                    Stroke::new(3.0, env.pal.drop),
-                );
+                if let Some((_, r)) = side {
+                    ui.painter().line_segment(
+                        [egui::pos2(r.max.x - 2.0, r.min.y), egui::pos2(r.max.x - 2.0, r.max.y)],
+                        Stroke::new(3.0, env.pal.drop),
+                    );
+                } else {
+                    let y = rects
+                        .iter()
+                        .find(|(i, _)| *i == target)
+                        .map(|(_, r)| r.min.y - 1.0)
+                        .or_else(|| rects.last().map(|(_, r)| r.max.y + 1.0))
+                        .unwrap_or(pointer.y);
+                    let x0 = rects.first().map(|(_, r)| r.min.x + gutter).unwrap_or(pointer.x);
+                    ui.painter().line_segment(
+                        [egui::pos2(x0, y), egui::pos2(x0 + full_width - gutter, y)],
+                        Stroke::new(3.0, env.pal.drop),
+                    );
+                }
                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                 if ctx.input(|i| i.pointer.any_released()) {
-                    if let Some(from) = blocks.iter().position(|b| b.id == payload.0) {
+                    if let Some(from) = from_idx {
                         let before = blocks.clone();
-                        let at = blocks::move_block(blocks, from, target);
+                        let multi = self.multi_range(blocks, from);
+                        let mut moved = None;
+                        if let Some((onto, _)) = side {
+                            moved = blocks::drop_beside(blocks, from, onto);
+                        } else if let Some((lo, hi)) = multi {
+                            blocks::move_range(blocks, lo, hi, target);
+                            blocks::tidy_columns(blocks);
+                        } else {
+                            let at = blocks::move_block(blocks, from, target);
+                            blocks::tidy_columns(blocks);
+                            moved = blocks.get(at).map(|b| b.id);
+                        }
                         if *blocks != before {
                             self.record(env.key, &before, None);
                             out.changed = true;
-                            self.sel_anchor = None;
-                            self.selected = Some(blocks[at].id);
+                            if multi.is_none() {
+                                self.sel_anchor = None;
+                                self.selected = moved;
+                            }
                         }
                     }
                     egui::DragAndDrop::clear_payload(&ctx);
@@ -1096,8 +1159,11 @@ impl EditorState {
             if hr.clicked() {
                 self.block_menu = Some(blocks[i].id);
                 self.block_menu_frame = ctx.cumulative_frame_nr();
-                self.sel_anchor = None;
-                self.selected = Some(blocks[i].id);
+                // the menu acts on the whole selection when this block is part of one
+                if self.multi_range(blocks, i).is_none() {
+                    self.sel_anchor = None;
+                    self.selected = Some(blocks[i].id);
+                }
                 ctx.memory_mut(|m| m.surrender_focus(text_id(blocks[i].id)));
             }
         }
@@ -1886,103 +1952,91 @@ impl EditorState {
                                 ui.label(RichText::new(tr(lang, "meeting_busy")).color(pal.text_faint));
                             } else {
                                 ui.horizontal_wrapped(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 8.0;
+                                    use crate::widgets::{cycle, icon_choice, text_link, Glyph};
+                                    ui.spacing_mut().item_spacing.x = 6.0;
                                     let label = if has_transcript {
                                         tr(lang, "meeting_resume")
                                     } else {
                                         tr(lang, "meeting_record")
                                     };
                                     let start = egui::Button::new(
-                                        RichText::new(format!("\u{25cf}  {label}")).size(13.0).color(Color32::WHITE),
+                                        RichText::new(format!("\u{25cf}  {label}")).size(13.0).color(pal.bg),
                                     )
-                                    .fill(pal.accent)
+                                    .fill(pal.text)
+                                    .stroke(egui::Stroke::NONE)
                                     .corner_radius(CornerRadius::same(14))
                                     .min_size(egui::vec2(0.0, 28.0));
-                                    if ui.add(start).clicked() {
+                                    if ui.add(start).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                                         act = Some(crate::meeting::MeetingAction::Start(bid));
                                     }
-                                    let sources = [
-                                        ("mic", tr(lang, "meeting_src_mic").to_string()),
-                                        ("system", tr(lang, "meeting_src_sys").to_string()),
-                                        ("both", tr(lang, "meeting_src_both").to_string()),
-                                    ];
-                                    if let Some(id) = segmented(ui, pal, &sources, &v.source) {
-                                        act = Some(crate::meeting::MeetingAction::SetSource(id));
+                                    ui.add_space(6.0);
+                                    for (id, g, k) in [
+                                        ("mic", Glyph::Mic, "meeting_src_mic"),
+                                        ("system", Glyph::Speaker, "meeting_src_sys"),
+                                        ("both", Glyph::Both, "meeting_src_both"),
+                                    ] {
+                                        if icon_choice(ui, pal, g, v.source == id, tr(lang, k)).clicked()
+                                            && v.source != id
+                                        {
+                                            act = Some(crate::meeting::MeetingAction::SetSource(id.to_string()));
+                                        }
                                     }
                                     let langs = [
-                                        ("auto", tr(lang, "meeting_lang_auto_s").to_string()),
-                                        ("fr", "FR".to_string()),
-                                        ("en", "EN".to_string()),
+                                        (
+                                            "auto".to_string(),
+                                            Glyph::Code("AUTO"),
+                                            tr(lang, "meeting_lang_auto").to_string(),
+                                        ),
+                                        ("fr".to_string(), Glyph::Code("FR"), tr(lang, "meeting_lang_fr").to_string()),
+                                        ("en".to_string(), Glyph::Code("EN"), tr(lang, "meeting_lang_en").to_string()),
                                     ];
-                                    if let Some(id) = segmented(ui, pal, &langs, &v.language) {
-                                        act = Some(crate::meeting::MeetingAction::SetLanguage(id));
+                                    let mut cur = v.language.clone();
+                                    if cycle(ui, pal, &mut cur, &langs, false) {
+                                        act = Some(crate::meeting::MeetingAction::SetLanguage(cur));
                                     }
-                                });
-                                ui.add_space(2.0);
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 4.0;
+                                    let short = |s: &str| -> String {
+                                        if s.chars().count() > 24 {
+                                            format!("{}…", s.chars().take(23).collect::<String>())
+                                        } else {
+                                            s.to_string()
+                                        }
+                                    };
                                     if v.source != "system" {
                                         let default_label = match &v.default_mic {
                                             Some(d) => format!("{} ({d})", tr(lang, "meeting_mic_default")),
                                             None => tr(lang, "meeting_mic_default").to_string(),
                                         };
-                                        let shown = if v.microphone.is_empty() {
-                                            default_label.clone()
-                                        } else {
-                                            v.microphone.clone()
-                                        };
-                                        flat_combo(
-                                            ui,
-                                            pal,
-                                            ("meeting-mic", bid),
-                                            &shown,
-                                            tr(lang, "combo_mic"),
-                                            220.0,
-                                            |ui| {
-                                                if ui.selectable_label(v.microphone.is_empty(), default_label).clicked()
-                                                {
-                                                    act = Some(crate::meeting::MeetingAction::SetMicrophone(
-                                                        String::new(),
-                                                    ));
-                                                }
-                                                for m in &v.mics {
-                                                    if ui.selectable_label(&v.microphone == m, m).clicked() {
-                                                        act = Some(crate::meeting::MeetingAction::SetMicrophone(
-                                                            m.clone(),
-                                                        ));
-                                                    }
-                                                }
-                                            },
-                                        );
+                                        let mut opts: Vec<(String, Glyph, String)> =
+                                            vec![(String::new(), Glyph::None, short(&default_label))];
+                                        for m in &v.mics {
+                                            opts.push((m.clone(), Glyph::None, short(m)));
+                                        }
+                                        let mut cur = v.microphone.clone();
+                                        if cycle(ui, pal, &mut cur, &opts, true) {
+                                            act = Some(crate::meeting::MeetingAction::SetMicrophone(cur));
+                                        }
                                     }
                                     if has_transcript {
-                                        let current = crate::meeting::template_label(lang, &v.template);
-                                        flat_combo(
-                                            ui,
-                                            pal,
-                                            ("meeting-template", bid),
-                                            current,
-                                            tr(lang, "combo_template"),
-                                            150.0,
-                                            |ui| {
-                                                for key in notecraft_ai::NOTE_TEMPLATES {
-                                                    let l = crate::meeting::template_label(lang, key);
-                                                    if ui.selectable_label(v.template == *key, l).clicked() {
-                                                        act = Some(crate::meeting::MeetingAction::SetTemplate(
-                                                            (*key).to_string(),
-                                                        ));
-                                                    }
-                                                }
-                                            },
-                                        );
+                                        let opts: Vec<(String, Glyph, String)> = notecraft_ai::NOTE_TEMPLATES
+                                            .iter()
+                                            .map(|k| {
+                                                (
+                                                    (*k).to_string(),
+                                                    Glyph::None,
+                                                    crate::meeting::template_label(lang, k).to_string(),
+                                                )
+                                            })
+                                            .collect();
+                                        let mut cur = v.template.clone();
+                                        if cycle(ui, pal, &mut cur, &opts, true) {
+                                            act = Some(crate::meeting::MeetingAction::SetTemplate(cur));
+                                        }
                                         let l = if has_notes {
                                             tr(lang, "meeting_rewrite_notes")
                                         } else {
                                             tr(lang, "meeting_write_notes")
                                         };
-                                        let b = egui::Button::new(RichText::new(l).size(12.5).color(pal.accent))
-                                            .stroke(egui::Stroke::NONE);
-                                        if ui.add(b).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                                        if text_link(ui, pal, l).clicked() {
                                             act = Some(crate::meeting::MeetingAction::Notes(bid));
                                         }
                                     }
@@ -2048,7 +2102,10 @@ impl EditorState {
                             if let Some(e) = &v.error {
                                 ui.add_space(4.0);
                                 ui.label(RichText::new(e).size(12.0).color(pal.danger));
-                                if v.mic_help && ui.button(tr(lang, "meeting_open_mic_settings")).clicked() {
+                                if v.mic_help
+                                    && crate::widgets::text_link(ui, pal, tr(lang, "meeting_open_mic_settings"))
+                                        .clicked()
+                                {
                                     act = Some(crate::meeting::MeetingAction::OpenMicSettings);
                                 }
                                 if let Some(bad) = &v.silent_device {
@@ -2060,7 +2117,7 @@ impl EditorState {
                                                 RichText::new(tr(lang, "meeting_try_mic")).color(pal.text_secondary),
                                             );
                                             for m in others {
-                                                if ui.button(format!("🎙 {m}")).clicked() {
+                                                if crate::widgets::text_link(ui, pal, m).clicked() {
                                                     act = Some(crate::meeting::MeetingAction::UseMicrophone(
                                                         m.clone(),
                                                         bid,
@@ -2070,7 +2127,10 @@ impl EditorState {
                                         });
                                     }
                                 }
-                                if v.audio_help && ui.button(tr(lang, "meeting_open_audio_settings")).clicked() {
+                                if v.audio_help
+                                    && crate::widgets::text_link(ui, pal, tr(lang, "meeting_open_audio_settings"))
+                                        .clicked()
+                                {
                                     act = Some(crate::meeting::MeetingAction::OpenAudioSettings);
                                 }
                             }
@@ -2430,10 +2490,8 @@ impl EditorState {
                     None => ("📄".to_string(), pal.text_faint),
                 };
                 let resp = ui.add(
-                    egui::Button::new(
-                        RichText::new(format!("{icon}  {title}")).size(theme::BODY_SIZE).color(color).underline(),
-                    )
-                    .min_size(Vec2::new(0.0, theme::BODY_SIZE * 1.5)),
+                    egui::Button::new(crate::widgets::icon_title(&icon, title, theme::BODY_SIZE, color))
+                        .min_size(Vec2::new(0.0, theme::BODY_SIZE * 1.5)),
                 );
                 let resp = resp.on_hover_text(if target.is_some() {
                     tr(env.lang, "click_open")
@@ -2591,7 +2649,7 @@ impl EditorState {
 mod helpers;
 mod keys;
 pub use helpers::human_size;
-use helpers::{flat_combo, number_label, segmented};
+use helpers::number_label;
 
 #[cfg(test)]
 mod tests;

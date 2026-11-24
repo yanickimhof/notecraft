@@ -332,7 +332,7 @@ mod tests {
         for n in [
             "notes 2",
             "notes (conflicted copy 2026-11-22)",
-            "Notes (Yanick's conflicted copy)",
+            "Notes (Alex's conflicted copy)",
             "notes (Kopie)",
             "notes (conflit)",
             "notes (Copie 1)",

@@ -9,6 +9,22 @@ impl Workspace {
         self.children(parent).iter().map(|c| self.order_of(&c.doc)).fold(0.0, f64::max) + 1.0
     }
 
+    /// Put a page first among its siblings.
+    pub fn move_to_top(&mut self, id: &str) -> Result<()> {
+        let parent = self.pages.get(id).ok_or_else(|| Error::NotFound(id.to_string()))?.meta.parent.clone();
+        let min = self
+            .children(parent.as_deref())
+            .iter()
+            .filter(|c| c.doc.id() != id)
+            .map(|c| self.order_of(&c.doc))
+            .fold(f64::MAX, f64::min);
+        let order = if min == f64::MAX { 1.0 } else { min - 1.0 };
+        let p = self.pages.get_mut(id).ok_or_else(|| Error::NotFound(id.to_string()))?;
+        p.meta.order = order;
+        p.touch();
+        self.save_page(id)
+    }
+
     /// Create a page under `parent` (a page id) or at the top level.
     pub fn create_page(&mut self, parent: Option<&str>, title: &str) -> Result<String> {
         self.ensure_parent_unlocked(parent)?;

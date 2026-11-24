@@ -89,6 +89,8 @@ impl NcApp {
         let screen = ctx.content_rect();
         let width = crate::theme::QUICK_FIND_SIZE[0].min(screen.width() - 40.0);
         let max_list = (crate::theme::QUICK_FIND_SIZE[1] - 70.0).min(screen.height() * 0.7);
+        // the click that opened the finder (sidebar button) must not close it in the same frame
+        let opened_now = finder.first_frame;
         let mut clicked_outside = false;
         // dim the window behind
         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Middle, Id::unique("finder-dim")));
@@ -221,7 +223,7 @@ impl NcApp {
             }
             return;
         }
-        if escape || clicked_outside {
+        if escape || (clicked_outside && !opened_now) {
             return;
         }
         self.finder = Some(finder);

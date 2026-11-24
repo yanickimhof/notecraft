@@ -6,9 +6,11 @@
 use eframe::egui::{self, epaint::PathShape, Color32, CornerRadius, Painter, Pos2, Rect, Stroke, Vec2};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum Icon {
     General,
     Data,
+    #[allow(dead_code)]
     Security,
     Ai,
     Assistants,
@@ -164,6 +166,7 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, w: Color32, hole: Color3
 }
 
 /// A clickable row of the settings side list: icon, label, highlighted when selected.
+#[allow(dead_code)]
 pub fn nav_item(
     ui: &mut egui::Ui,
     icon: Icon,

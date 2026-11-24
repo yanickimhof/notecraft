@@ -333,6 +333,57 @@ impl EditorState {
         Some((lo, blocks::subtree_end(blocks, hi)))
     }
 
+    /// The blocks of a multi-block selection when `i` is one of them.
+    pub(super) fn multi_range(&self, blocks: &[Block], i: usize) -> Option<(usize, usize)> {
+        self.sel_anchor?;
+        self.selected_range(blocks).filter(|(a, b)| (*a..*b).contains(&i))
+    }
+
+    /// Turn the selected blocks into `key`, each text block on its own (several lines
+    /// become one block for code). A `group_` key puts them together under a new toggle or callout.
+    /// False when nothing changed.
+    pub(super) fn turn_range(&mut self, blocks: &mut Vec<Block>, i: usize, key: &str) -> bool {
+        let multi = self.multi_range(blocks, i);
+        if let Some(container) = key.strip_prefix("group_") {
+            let Some(kind) = kind_for(container) else { return false };
+            let (lo, hi) = multi.unwrap_or((i, blocks::subtree_end(blocks, i)));
+            if blocks[lo..hi].iter().any(|b| b.depth + 1 > MAX_DEPTH) {
+                return false;
+            }
+            let depth = blocks[lo..hi].iter().map(|b| b.depth).min().unwrap_or(0);
+            for b in &mut blocks[lo..hi] {
+                b.depth += 1;
+            }
+            let head = Block::new(kind, "").with_depth(depth);
+            self.focus = Some((head.id, Caret::Start));
+            blocks.insert(lo, head);
+            self.selected = None;
+            self.sel_anchor = None;
+            return true;
+        }
+        let Some(kind) = kind_for(key) else { return false };
+        let (lo, hi) = multi.unwrap_or((i, i + 1));
+        if matches!(kind, BlockKind::Code { .. })
+            && hi - lo > 1
+            && blocks[lo..hi].iter().all(|b| b.kind.has_rich_text())
+        {
+            let depth = blocks[lo].depth;
+            let text = blocks[lo..hi].iter().map(|b| b.text.clone()).collect::<Vec<_>>().join("\n");
+            blocks.splice(lo..hi, [Block::new(kind, text).with_depth(depth)]);
+            self.selected = None;
+            self.sel_anchor = None;
+            return true;
+        }
+        let mut changed = false;
+        for b in &mut blocks[lo..hi] {
+            if b.kind.has_rich_text() || hi - lo == 1 {
+                b.kind = kind.clone();
+                changed = true;
+            }
+        }
+        changed
+    }
+
     pub(super) fn handle_selection_keys(
         &mut self,
         ctx: &egui::Context,
@@ -630,14 +681,20 @@ impl EditorState {
 
     pub(super) fn duplicate(&mut self, blocks: &mut Vec<Block>, i: usize, env: &Env, out: &mut Output) {
         let before = blocks.clone();
-        let end = blocks::subtree_end(blocks, i);
+        let multi = self.multi_range(blocks, i);
+        let (lo, end) = multi.unwrap_or((i, blocks::subtree_end(blocks, i)));
         let copies: Vec<Block> =
-            blocks[i..end].iter().map(|b| Block { id: blocks::next_block_id(), ..b.clone() }).collect();
+            blocks[lo..end].iter().map(|b| Block { id: blocks::next_block_id(), ..b.clone() }).collect();
         let first = copies[0].id;
+        let last = copies[copies.len() - 1].id;
         for (k, c) in copies.into_iter().enumerate() {
             blocks.insert(end + k, c);
         }
-        if self.selected.is_some() {
+        if multi.is_some() {
+            // the copies are the new selection
+            self.selected = Some(first);
+            self.sel_anchor = Some(last);
+        } else if self.selected.is_some() {
             self.sel_anchor = None;
             self.selected = Some(first);
         } else {
@@ -650,23 +707,31 @@ impl EditorState {
     pub(super) fn move_up_down(&mut self, blocks: &mut Vec<Block>, i: usize, up: bool, env: &Env, out: &mut Output) {
         let before = blocks.clone();
         let bid = blocks[i].id;
+        let multi = self.multi_range(blocks, i);
+        let (lo, hi) = multi.unwrap_or((i, blocks::subtree_end(blocks, i)));
         let target = if up {
-            if i == 0 {
+            if lo == 0 {
                 return;
             }
-            let d = blocks[i].depth;
-            let mut j = i - 1;
+            let d = blocks[lo].depth;
+            let mut j = lo - 1;
             while j > 0 && blocks[j].depth > d {
                 j -= 1;
             }
             j
         } else {
-            let end = blocks::subtree_end(blocks, i);
-            if end >= blocks.len() {
+            if hi >= blocks.len() {
                 return;
             }
-            blocks::subtree_end(blocks, end)
+            blocks::subtree_end(blocks, hi)
         };
+        if multi.is_some() {
+            // the whole selection moves and stays selected
+            blocks::move_range(blocks, lo, hi, target);
+            self.record(env.key, &before, None);
+            out.changed = true;
+            return;
+        }
         blocks::move_block(blocks, i, target);
         if self.selected.is_some() {
             self.sel_anchor = None;
@@ -693,11 +758,10 @@ impl EditorState {
         self.slash = None;
         let bid = blocks[i].id;
         if slash.mode == SlashMode::TurnInto {
-            if let Some(kind) = kind_for(key) {
-                blocks[i].kind = kind;
+            if self.turn_range(blocks, i, key) {
                 self.record(env.key, &before, None);
                 out.changed = true;
-                if self.selected.is_none() {
+                if self.selected.is_none() && self.focus.is_none() {
                     self.focus = Some((bid, Caret::End));
                 }
             }
@@ -846,6 +910,7 @@ impl EditorState {
                             let section = match it.key {
                                 "image" | "file" | "bookmark" => "media",
                                 "table" | "board" | "list" | "dbview" => "database_views",
+                                "group_toggle" | "group_callout" => "block_group",
                                 "meeting" => "ai_blocks",
                                 _ => "basic_blocks",
                             };
@@ -973,11 +1038,13 @@ impl EditorState {
                                 acted = true;
                             }
                             "copy" => {
-                                ctx.copy_text(blocks::to_markdown(&blocks[i..end]));
+                                let (a, b) = self.multi_range(blocks, i).unwrap_or((i, end));
+                                ctx.copy_text(blocks::to_markdown(&blocks[a..b]));
                                 acted = true;
                             }
                             "cut" => {
-                                ctx.copy_text(blocks::to_markdown(&blocks[i..end]));
+                                let (a, b) = self.multi_range(blocks, i).unwrap_or((i, end));
+                                ctx.copy_text(blocks::to_markdown(&blocks[a..b]));
                                 deferred.push(Deferred::Delete(i));
                                 acted = true;
                             }
@@ -1040,7 +1107,7 @@ impl EditorState {
                         } else {
                             ui.set_width(220.0);
                             let current = blocks[i].color.clone();
-                            let mut pick: Option<String> = None;
+                            let mut pick: Option<(String, bool)> = None;
                             for bg in [false, true] {
                                 let title = if bg { "color_bg_title" } else { "color_text_title" };
                                 ui.label(RichText::new(tr(lang, title)).size(12.0).color(pal.text_faint));
@@ -1097,7 +1164,12 @@ impl EditorState {
                                         FontId::proportional(14.0),
                                         pal.text,
                                     );
-                                    if current == key && !(key.is_empty() && !current.is_empty()) {
+                                    let is_current = if key.is_empty() {
+                                        !current.split_whitespace().any(|p| p.starts_with("bg-") == bg)
+                                    } else {
+                                        current.split_whitespace().any(|p| p == key)
+                                    };
+                                    if is_current {
                                         ui.painter().text(
                                             egui::pos2(r.max.x - 8.0, r.center().y),
                                             Align2::RIGHT_CENTER,
@@ -1107,13 +1179,13 @@ impl EditorState {
                                         );
                                     }
                                     if resp.clicked() {
-                                        pick = Some(key);
+                                        pick = Some((key, bg));
                                     }
                                 }
                                 ui.add_space(4.0);
                             }
                             if let Some(c) = pick {
-                                deferred.push(Deferred::SetColor(i, c));
+                                deferred.push(Deferred::SetColor(i, c.0, c.1));
                                 acted = true;
                             }
                         }
@@ -1211,12 +1283,14 @@ impl EditorState {
             }
             Deferred::SetCalloutIcon(i, e) => blocks[i].kind = BlockKind::Callout { icon: e },
             Deferred::TurnInto(i, key) => {
-                if let Some(kind) = kind_for(key) {
-                    blocks[i].kind = kind;
-                }
+                let bid = blocks[i].id;
+                self.focus = None;
+                self.turn_range(blocks, i, key);
                 self.selected = None;
                 self.sel_anchor = None;
-                self.focus = Some((blocks[i].id, Caret::End));
+                if self.focus.is_none() {
+                    self.focus = Some((bid, Caret::End));
+                }
             }
             Deferred::Slash(i, key) => {
                 if let Some(s) = self.slash.clone() {
@@ -1225,7 +1299,7 @@ impl EditorState {
                 return;
             }
             Deferred::Delete(i) => {
-                let end = blocks::subtree_end(blocks, i);
+                let (i, end) = self.multi_range(blocks, i).unwrap_or((i, blocks::subtree_end(blocks, i)));
                 blocks.drain(i..end);
                 if blocks.is_empty() {
                     blocks.push(Block::paragraph(""));
@@ -1233,7 +1307,7 @@ impl EditorState {
                 self.selected = None;
                 self.sel_anchor = None;
             }
-            Deferred::SetColor(i, color) => {
+            Deferred::SetColor(i, color, bg) => {
                 // a multi-block selection is coloured as a whole
                 let (lo, hi) = match self.selected_range(blocks) {
                     Some((a, b)) if (a..b).contains(&i) => (a, b),
@@ -1241,7 +1315,7 @@ impl EditorState {
                 };
                 for b in &mut blocks[lo..hi] {
                     if b.kind.has_rich_text() {
-                        b.color = color.clone();
+                        b.color = blocks::merge_color(&b.color, &color, bg);
                     }
                 }
                 // the selection highlight would hide the new colour

@@ -391,6 +391,20 @@ pub const EMOJI: &[&str] = &[
 /// Colours of a block colour name (`red` for the text, `bg-red` for the background):
 /// `(text, background)`; `None` for an unknown name.
 pub fn block_color(name: &str, dark: bool) -> Option<(Option<Color32>, Option<Color32>)> {
+    // a block can carry a text colour and a background together (`red bg-blue`)
+    let mut out = (None, None);
+    let mut any = false;
+    for part in name.split_whitespace() {
+        if let Some((t, b)) = single_block_color(part, dark) {
+            any = true;
+            out.0 = out.0.or(t);
+            out.1 = out.1.or(b);
+        }
+    }
+    any.then_some(out)
+}
+
+fn single_block_color(name: &str, dark: bool) -> Option<(Option<Color32>, Option<Color32>)> {
     let (is_bg, base) = match name.strip_prefix("bg-") {
         Some(b) => (true, b),
         None => (false, name),

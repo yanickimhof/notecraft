@@ -77,7 +77,7 @@ impl Default for Prefs {
             text_percent: 100,
             ai: crate::ai_panel::AiPrefs::default(),
             meeting: crate::meeting::MeetingPrefs::default(),
-            backup_minutes: 15,
+            backup_minutes: 1440,
             tabs: Vec::new(),
             active_tab: 0,
             tabs_workspace: None,
@@ -171,12 +171,18 @@ pub struct NcApp {
     pub toast: Option<(String, Instant)>,
     pub settings_open: bool,
     pub trash_open: bool,
+    #[allow(dead_code)]
     pub settings_tab: crate::settings::Tab,
     pub vault: crate::vault_ui::VaultUi,
     pub backup: crate::backups::BackupUi,
     pub backup_started: Instant,
     pub show_backlinks: bool,
     pub expanded: HashSet<String>,
+    /// The page just opened from the Favourites list: the page tree neither opens up nor lights up for it.
+    pub fav_nav_doc: Option<DocId>,
+    /// The page being moved (the "Move to…" dialog is open) and what was typed to find the new parent.
+    pub move_doc: Option<DocId>,
+    pub move_query: String,
     pub pal: Palette,
     pub shot: Option<Shot>,
     pub icon_picker: bool,
@@ -217,6 +223,9 @@ impl NcApp {
         let tray = if args.screenshot.is_some() { None } else { crate::tray::Tray::new(&cc.egui_ctx, tray_labels) };
         let mut app = NcApp {
             expanded: prefs.expanded.iter().cloned().collect(),
+            fav_nav_doc: None,
+            move_doc: None,
+            move_query: String::new(),
             prefs,
             ws: None,
             current: None,
@@ -1035,6 +1044,7 @@ impl eframe::App for NcApp {
         self.graph_window(&ctx);
         self.ai_panel_ui(&ctx);
         self.settings_ui(&ctx);
+        self.move_dialog(&ctx);
         self.trash_ui(&ctx);
         self.history_ui(&ctx);
         self.vault_ui(&ctx);

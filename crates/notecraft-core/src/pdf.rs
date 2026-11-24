@@ -3,7 +3,7 @@
 //! itself is written by `krilla`.
 
 use crate::blocks::Block;
-use crate::render::{css_color, image_size, items, Item, Kind, Marker, Run};
+use crate::render::{css_colors, image_size, items, Item, Kind, Marker, Run};
 use krilla::color::rgb;
 use krilla::geom::{PathBuilder, Point, Rect, Size};
 use krilla::metadata::Metadata;
@@ -370,11 +370,8 @@ fn words_of(runs: &[Run], base: F, size: f32, color: Rgb) -> Vec<Word> {
 }
 
 fn item_color(it: &Item) -> (Rgb, Option<Rgb>) {
-    match css_color(&it.color) {
-        Some((hex, true)) => (INK, Some(hex_rgb(hex))),
-        Some((hex, false)) => (hex_rgb(hex), None),
-        None => (INK, None),
-    }
+    let (text, bg) = css_colors(&it.color);
+    (text.map_or(INK, hex_rgb), bg.map(hex_rgb))
 }
 
 fn load_image(bytes: &[u8]) -> Option<krilla::image::Image> {

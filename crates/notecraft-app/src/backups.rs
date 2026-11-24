@@ -34,7 +34,7 @@ pub struct BackupUi {
 }
 
 /// Minutes between backups offered in the settings (0 = off).
-const CHOICES: [u32; 4] = [0, 5, 15, 60];
+const CHOICES: [u32; 3] = [60, 360, 1440];
 
 impl NcApp {
     /// Start a backup on a background thread when it is due (or when `force`).
@@ -56,7 +56,11 @@ impl NcApp {
             }
             return;
         }
-        let minutes = self.prefs.backup_minutes;
+        let minutes = match self.prefs.backup_minutes {
+            0 => 0,
+            1..=59 => 60,
+            m => m,
+        };
         if minutes == 0 && !force {
             return;
         }
@@ -78,81 +82,85 @@ impl NcApp {
         ctx.request_repaint_after(Duration::from_secs(2));
     }
 
-    pub fn backup_section(&mut self, ui: &mut Ui) {
+    /// The page behind "Restore": back up now, then the restore points, all visible.
+    pub fn restore_page(&mut self, ui: &mut Ui) {
+        use crate::widgets::{srow, text_link};
         let pal = self.pal;
         let lang = self.prefs.lang;
-        ui.label(RichText::new(tr(lang, "backups")).strong().size(14.5).color(pal.text));
-        ui.add_space(4.0);
-        ui.add(egui::Label::new(RichText::new(tr(lang, "backups_text")).size(12.5).color(pal.text_secondary)).wrap());
-        ui.add_space(8.0);
-        widgets::setting_row(ui, &pal, tr(lang, "backup_every"), "", |ui| {
-            let opts: Vec<(u32, String)> = CHOICES
-                .iter()
-                .map(|&m| (m, if m == 0 { tr(lang, "backup_off").to_string() } else { format!("{m} min") }))
-                .collect();
-            widgets::segmented(ui, &pal, &mut self.prefs.backup_minutes, &opts);
-        });
-        widgets::row_divider(ui, &pal);
         let running = self.backup.rx.is_some();
-        ui.horizontal(|ui| {
-            if ui.add_enabled(!running, egui::Button::new(tr(lang, "backup_now"))).clicked() {
-                let ctx = ui.ctx().clone();
-                self.poll_backup(&ctx, true);
+        let last = match &self.backup.last_made {
+            Some(t) => format!("{} {}", tr(lang, "backup_last"), widgets::relative_time(t, lang)),
+            None => tr(lang, "backup_none_yet").to_string(),
+        };
+        self.backup_frequency_row(ui);
+        let mut now = false;
+        let mut open = false;
+        srow(ui, &pal, tr(lang, "backup_now"), if running { tr(lang, "backup_running") } else { &last }, None, |ui| {
+            if text_link(ui, &pal, tr(lang, "open")).clicked() {
+                open = true;
             }
-            let last = match &self.backup.last_made {
-                Some(t) => format!("{} {}", tr(lang, "backup_last"), widgets::relative_time(t, lang)),
-                None => tr(lang, "backup_none_yet").to_string(),
-            };
-            ui.label(
-                RichText::new(if running { tr(lang, "backup_running") } else { &last })
-                    .size(12.5)
-                    .color(pal.text_secondary),
-            );
+            if !running && text_link(ui, &pal, tr(lang, "backup_now")).clicked() {
+                now = true;
+            }
+        });
+        if now {
+            let ctx = ui.ctx().clone();
+            self.poll_backup(&ctx, true);
+        }
+        if open {
             if let Some(ws) = &self.ws {
-                let dir = ws.snapshot_dir();
-                if widgets::icon_button(ui, "↗", tr(lang, "open")).clicked() {
-                    reveal(&dir);
-                }
+                reveal(&ws.snapshot_dir());
             }
-        });
+        }
+        ui.add_space(10.0);
         let Some(ws) = &self.ws else { return };
-        let list: Vec<SnapshotInfo> = ws.list_snapshots().into_iter().take(15).collect();
+        let list: Vec<SnapshotInfo> = ws.list_snapshots().into_iter().take(30).collect();
+        if list.is_empty() {
+            ui.horizontal(|ui| {
+                ui.add_space(10.0);
+                ui.label(RichText::new(tr(lang, "backup_none_yet")).size(13.0).color(pal.text_faint));
+            });
+        }
         let mut restore: Option<String> = None;
-        egui::CollapsingHeader::new(tr(lang, "restore_points")).show(ui, |ui| {
-            if list.is_empty() {
-                ui.label(RichText::new(tr(lang, "backup_none_yet")).size(12.5).color(pal.text_faint));
-            }
-            for info in &list {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(widgets::relative_time(&info.time, lang)).size(12.5));
-                    let why = if info.reason == backup::AUTO_REASON {
-                        tr(lang, "backup_auto").to_string()
+        for info in &list {
+            let why = if info.reason == backup::AUTO_REASON {
+                tr(lang, "backup_auto").to_string()
+            } else {
+                info.reason.clone()
+            };
+            let sub = format!("{why} · {} {}", info.files.len(), tr(lang, "backup_files"));
+            let asked = self.backup.confirm_restore.as_deref() == Some(info.id.as_str());
+            srow(ui, &pal, &widgets::relative_time(&info.time, lang), &sub, None, |ui| {
+                let label = if asked { tr(lang, "backup_confirm") } else { tr(lang, "restore") };
+                if text_link(ui, &pal, label).clicked() {
+                    if asked {
+                        restore = Some(info.id.clone());
                     } else {
-                        info.reason.clone()
-                    };
-                    ui.label(
-                        RichText::new(format!("{why} · {} {}", info.files.len(), tr(lang, "backup_files")))
-                            .size(12.0)
-                            .color(pal.text_faint),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let asked = self.backup.confirm_restore.as_deref() == Some(info.id.as_str());
-                        let label = if asked { tr(lang, "backup_confirm") } else { tr(lang, "restore") };
-                        if ui.small_button(label).clicked() {
-                            if asked {
-                                restore = Some(info.id.clone());
-                            } else {
-                                self.backup.confirm_restore = Some(info.id.clone());
-                            }
-                        }
-                    });
-                });
-            }
-        });
+                        self.backup.confirm_restore = Some(info.id.clone());
+                    }
+                }
+            });
+        }
         if let Some(id) = restore {
             self.backup.confirm_restore = None;
             self.restore_snapshot_now(&id);
         }
+    }
+
+    /// How often the automatic backup runs: a click steps to the next choice.
+    pub fn backup_frequency_row(&mut self, ui: &mut Ui) {
+        let pal = self.pal;
+        let lang = self.prefs.lang;
+        if self.prefs.backup_minutes == 0 {
+            return;
+        }
+        let label = |m: u32| if m >= 1440 { "24 h".to_string() } else { format!("{} h", m / 60) };
+        let opts: Vec<(u32, widgets::Glyph, String)> =
+            CHOICES.iter().map(|&m| (m, widgets::Glyph::None, label(m))).collect();
+        ui.add_space(8.0);
+        widgets::srow(ui, &pal, tr(lang, "backup_every"), "", None, |ui| {
+            widgets::cycle(ui, &pal, &mut self.prefs.backup_minutes, &opts, true);
+        });
     }
 
     fn restore_snapshot_now(&mut self, id: &str) {

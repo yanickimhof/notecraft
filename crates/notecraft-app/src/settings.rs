@@ -5,11 +5,10 @@
 use crate::ai_panel::EngineChoice;
 use crate::app::{reveal, NcApp, SHORTCUTS};
 use crate::i18n::{tr, Lang};
-use crate::icons::{self, Icon};
 use crate::mcp_setup::{self, DesktopState};
 use crate::theme::ThemeChoice;
-use crate::widgets::{card, choice_row, hint, row_divider, section, segmented, setting_row, status_pill};
-use eframe::egui::{self, FontId, Id, RichText, TextStyle, Ui, Vec2};
+use crate::widgets::{card, hint, row_divider, section, setting_row, status_pill, toggle};
+use eframe::egui::{self, FontId, Id, RichText, TextStyle, Ui};
 use notecraft_ai::keychain;
 use notecraft_core::sync;
 use notecraft_core::watch::WatchMode;
@@ -21,30 +20,18 @@ pub enum Tab {
     #[default]
     General,
     Data,
-    Security,
     Ai,
     Assistants,
     Shortcuts,
     About,
+    Backups,
 }
 
-const TABS: [(Tab, Icon, &str); 7] = [
-    (Tab::General, Icon::General, "set_general"),
-    (Tab::Data, Icon::Data, "set_data"),
-    (Tab::Security, Icon::Security, "set_security"),
-    (Tab::Ai, Icon::Ai, "set_ai"),
-    (Tab::Assistants, Icon::Assistants, "set_assistants"),
-    (Tab::Shortcuts, Icon::Shortcuts, "set_shortcuts"),
-    (Tab::About, Icon::About, "set_about"),
-];
-
-fn page_title(ui: &mut Ui, pal: &crate::theme::Palette, title: &str, subtitle: &str) {
-    ui.label(RichText::new(title).size(20.0).strong().color(pal.text));
+fn page_title(ui: &mut Ui, pal: &crate::theme::Palette, _title: &str, subtitle: &str) {
     if !subtitle.is_empty() {
-        ui.add_space(2.0);
         hint(ui, pal, subtitle);
+        ui.add_space(10.0);
     }
-    ui.add_space(14.0);
 }
 
 /// A path with the home folder shortened to `~`.
@@ -73,13 +60,13 @@ fn file_row(ui: &mut Ui, pal: &crate::theme::Palette, lang: Lang, title: &str, t
     ui.horizontal(|ui| {
         let total = ui.available_width();
         ui.vertical(|ui| {
-            ui.set_max_width(total - 190.0);
+            ui.set_max_width(total - 90.0);
             ui.label(RichText::new(title).size(13.0).color(pal.text));
             ui.add(egui::Label::new(RichText::new(tilde(path)).size(12.0).color(pal.text_secondary)).wrap());
             hint(ui, pal, text);
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button(tr(lang, "show_in_finder")).clicked() {
+            if crate::widgets::link(ui, pal, tr(lang, "show_short")).clicked() {
                 show(path);
             }
         });
@@ -124,7 +111,7 @@ impl NcApp {
         let pal = self.pal;
         let lang = self.prefs.lang;
         let mut close = false;
-        let height = (ctx.content_rect().height() - 110.0).clamp(420.0, 640.0);
+        let height = (ctx.content_rect().height() - 110.0).clamp(420.0, 620.0);
         let modal = egui::Modal::new(Id::unique("settings")).show(ctx, |ui| {
             // one text scale for the whole window
             let styles = &mut ui.style_mut().text_styles;
@@ -135,94 +122,168 @@ impl NcApp {
             // buttons get a visible body so they read as buttons
             let w = &mut ui.style_mut().visuals.widgets;
             w.inactive.weak_bg_fill = pal.hover;
-            w.inactive.bg_stroke = egui::Stroke::new(1.0, pal.border);
-            ui.set_width(800.0);
+            w.hovered.weak_bg_fill = pal.active;
+            w.inactive.bg_stroke = egui::Stroke::NONE;
+            w.hovered.bg_stroke = egui::Stroke::NONE;
+            w.active.bg_stroke = egui::Stroke::NONE;
+            for st in [&mut w.inactive, &mut w.hovered, &mut w.active] {
+                st.corner_radius = egui::CornerRadius::same(8);
+                st.expansion = 0.0;
+            }
+            ui.set_width(480.0);
             ui.set_height(height);
-            ui.horizontal_top(|ui| {
-                ui.allocate_ui(Vec2::new(190.0, height), |ui| {
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 2.0;
-                        ui.add_space(4.0);
-                        for (tab, icon, key) in TABS {
-                            if icons::nav_item(ui, icon, tr(lang, key), self.settings_tab == tab, &pal).clicked() {
-                                self.settings_tab = tab;
+            ui.vertical(|ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt(("settings-page", self.settings_tab as u8))
+                    .max_height(height - 44.0)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_width(460.0);
+                        match self.settings_tab {
+                            Tab::General => self.page_main(ui),
+                            Tab::Data => {
+                                self.sub_header(ui, tr(lang, "set_data_security"));
+                                self.tab_data(ui);
+                            }
+                            Tab::Ai => {
+                                self.sub_header(ui, tr(lang, "set_meeting"));
+                                self.meeting_card(ui);
+                            }
+                            Tab::Assistants => {
+                                self.sub_header(ui, tr(lang, "set_assistants"));
+                                self.tab_assistants(ui);
+                            }
+                            Tab::Shortcuts => {
+                                self.sub_header(ui, tr(lang, "shortcuts"));
+                                self.tab_shortcuts(ui);
+                            }
+                            Tab::About => {
+                                self.sub_header(ui, tr(lang, "set_about"));
+                                self.tab_about(ui);
+                            }
+                            Tab::Backups => {
+                                self.sub_header(ui, tr(lang, "restore_points"));
+                                self.restore_page(ui);
                             }
                         }
                     });
-                });
-                ui.add_space(10.0);
-                ui.allocate_ui(Vec2::new(580.0, height), |ui| {
-                    ui.vertical(|ui| {
-                        egui::ScrollArea::vertical()
-                            .id_salt(("settings-page", self.settings_tab as u8))
-                            .max_height(height - 48.0)
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                ui.set_width(560.0);
-                                match self.settings_tab {
-                                    Tab::General => self.tab_general(ui),
-                                    Tab::Data => self.tab_data(ui),
-                                    Tab::Security => self.tab_security(ui),
-                                    Tab::Ai => self.tab_ai(ui),
-                                    Tab::Assistants => self.tab_assistants(ui),
-                                    Tab::Shortcuts => self.tab_shortcuts(ui),
-                                    Tab::About => self.tab_about(ui),
-                                }
-                                ui.add_space(12.0);
-                            });
-                        ui.with_layout(egui::Layout::bottom_up(egui::Align::Max), |ui| {
-                            ui.set_max_width(560.0);
-                            // a centred layout keeps the label in the middle of the button
-                            let r = ui.allocate_ui_with_layout(
-                                Vec2::new(90.0, 30.0),
-                                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-                                |ui| ui.button(tr(lang, "done")),
-                            );
-                            if r.inner.clicked() {
-                                close = true;
-                            }
-                        });
-                    });
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Max), |ui| {
+                    ui.set_max_width(460.0);
+                    if crate::widgets::link(ui, &pal, tr(lang, "done")).clicked() {
+                        close = true;
+                    }
                 });
             });
         });
         if close || modal.should_close() {
             self.settings_open = false;
+            self.settings_tab = Tab::General;
         }
     }
 
-    // ----------------------------------------------------------------- general
-
-    fn tab_general(&mut self, ui: &mut Ui) {
+    /// The top of a page opened from the main one: a way back and the page title.
+    fn sub_header(&mut self, ui: &mut Ui, title: &str) {
         let pal = self.pal;
         let lang = self.prefs.lang;
-        page_title(ui, &pal, tr(lang, "set_general"), "");
-        section(ui, &pal, tr(lang, "appearance"));
-        card(ui, &pal, |ui| {
-            setting_row(ui, &pal, tr(lang, "theme"), "", |ui| {
-                let opts = [
-                    (ThemeChoice::System, tr(lang, "theme_auto").to_string()),
-                    (ThemeChoice::Light, tr(lang, "light").to_string()),
-                    (ThemeChoice::Dark, tr(lang, "dark").to_string()),
-                ];
-                segmented(ui, &pal, &mut self.prefs.theme, &opts);
-            });
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "text_size"), "", |ui| {
-                let opts = [
-                    (85u32, "85%".to_string()),
-                    (100, "100%".to_string()),
-                    (115, "115%".to_string()),
-                    (130, "130%".to_string()),
-                ];
-                segmented(ui, &pal, &mut self.prefs.text_percent, &opts);
-            });
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "language"), "", |ui| {
-                let opts = [(Lang::En, "English".to_string()), (Lang::Fr, "Français".to_string())];
-                segmented(ui, &pal, &mut self.prefs.lang, &opts);
-            });
+        if crate::widgets::text_link(ui, &pal, &format!("‹  {}", tr(lang, "settings"))).clicked() {
+            self.settings_tab = Tab::General;
+        }
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.add_space(10.0);
+            ui.label(RichText::new(title).size(18.0).color(pal.text));
         });
+        ui.add_space(10.0);
+    }
+
+    // ------------------------------------------------------------- main page
+
+    /// The one page people open: a few lines, then the rest one level down.
+    fn page_main(&mut self, ui: &mut Ui) {
+        use crate::widgets::{cycle, nav_row, srow, text_link, Glyph};
+        let pal = self.pal;
+        let lang = self.prefs.lang;
+        self.ai_poll(ui);
+        ui.add_space(2.0);
+        srow(ui, &pal, tr(lang, "theme"), "", None, |ui| {
+            let opts = [
+                (ThemeChoice::System, Glyph::Half, tr(lang, "theme_auto").to_string()),
+                (ThemeChoice::Light, Glyph::Sun, tr(lang, "light").to_string()),
+                (ThemeChoice::Dark, Glyph::Moon, tr(lang, "dark").to_string()),
+            ];
+            cycle(ui, &pal, &mut self.prefs.theme, &opts, false);
+        });
+        srow(ui, &pal, tr(lang, "text_size"), "", None, |ui| {
+            let opts = [
+                (85u32, Glyph::Letter(9.0), "85 %".to_string()),
+                (100, Glyph::Letter(13.0), "100 %".to_string()),
+                (115, Glyph::Letter(17.0), "115 %".to_string()),
+                (130, Glyph::Letter(21.0), "130 %".to_string()),
+            ];
+            cycle(ui, &pal, &mut self.prefs.text_percent, &opts, false);
+        });
+        srow(ui, &pal, tr(lang, "language"), "", None, |ui| {
+            let opts = [
+                (Lang::Fr, Glyph::Code("FR"), "Français".to_string()),
+                (Lang::En, Glyph::Code("EN"), "English".to_string()),
+            ];
+            cycle(ui, &pal, &mut self.prefs.lang, &opts, false);
+        });
+        if let Some(root) = self.ws.as_ref().map(|w| w.root.clone()) {
+            srow(ui, &pal, tr(lang, "files_notes"), &tilde(&root), None, |ui| {
+                if text_link(ui, &pal, tr(lang, "show_short")).clicked() {
+                    show(&root);
+                }
+            });
+        }
+        if (1..60).contains(&self.prefs.backup_minutes) {
+            self.prefs.backup_minutes = 60;
+        }
+        let last = match &self.backup.last_made {
+            Some(t) => format!("{} {}", tr(lang, "backup_last"), crate::widgets::relative_time(t, lang)),
+            None => tr(lang, "backup_none_yet").to_string(),
+        };
+        let mut on = self.prefs.backup_minutes != 0;
+        let mut more = false;
+        srow(ui, &pal, tr(lang, "set_daily_backup"), &last, None, |ui| {
+            if toggle(ui, &pal, &mut on).changed() {
+                self.prefs.backup_minutes = if on { 1440 } else { 0 };
+            }
+            more = text_link(ui, &pal, tr(lang, "settings")).clicked();
+        });
+        if more {
+            self.settings_tab = Tab::Backups;
+        }
+        self.ai_row(ui);
+
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            ui.add_space(10.0);
+            ui.label(RichText::new(tr(lang, "set_advanced").to_uppercase()).size(11.0).color(pal.text_faint));
+        });
+        ui.add_space(2.0);
+        if nav_row(ui, &pal, tr(lang, "set_data_security"), "").clicked() {
+            self.settings_tab = Tab::Data;
+        }
+        if nav_row(ui, &pal, tr(lang, "set_meeting"), "").clicked() {
+            self.settings_tab = Tab::Ai;
+        }
+        if nav_row(ui, &pal, tr(lang, "set_assistants"), "").clicked() {
+            self.settings_tab = Tab::Assistants;
+        }
+        if nav_row(ui, &pal, tr(lang, "shortcuts"), "").clicked() {
+            self.settings_tab = Tab::Shortcuts;
+        }
+        if nav_row(ui, &pal, tr(lang, "set_about"), notecraft_core::version()).clicked() {
+            self.settings_tab = Tab::About;
+        }
+    }
+
+    // ------------------------------------------------------------- maintenance
+
+    fn maintenance(&mut self, ui: &mut Ui) {
+        let pal = self.pal;
+        let lang = self.prefs.lang;
         if self.ws.is_none() {
             return;
         }
@@ -260,8 +321,8 @@ impl NcApp {
         ui.add_space(14.0);
         self.sync_card(ui);
         ui.add_space(14.0);
-        section(ui, &pal, tr(lang, "backups"));
-        card(ui, &pal, |ui| self.backup_section(ui));
+        self.vault_section(ui);
+        self.maintenance(ui);
     }
 
     fn files_card(&mut self, ui: &mut Ui) {
@@ -340,10 +401,9 @@ impl NcApp {
 
     // ---------------------------------------------------------------- security
 
-    fn tab_security(&mut self, ui: &mut Ui) {
+    fn vault_section(&mut self, ui: &mut Ui) {
         let pal = self.pal;
         let lang = self.prefs.lang;
-        page_title(ui, &pal, tr(lang, "set_security"), tr(lang, "set_security_sub"));
         let (count, open) = self
             .ws
             .as_ref()
@@ -377,10 +437,9 @@ impl NcApp {
 
     // ---------------------------------------------------------------------- ai
 
-    fn tab_ai(&mut self, ui: &mut Ui) {
-        let pal = self.pal;
-        let lang = self.prefs.lang;
-        page_title(ui, &pal, tr(lang, "set_ai"), tr(lang, "set_ai_sub"));
+    /// Model lists change (a model is installed, a new one is released): ask again when the page
+    /// opens and then at most once a minute while it stays open.
+    fn ai_poll(&mut self, ui: &mut Ui) {
         // model lists change (a model is installed, a new one is released): ask again when the page
         // opens and then at most once a minute while it stays open
         if self.ai.checked.is_none_or(|t| t.elapsed().as_secs() >= 60) {
@@ -395,225 +454,179 @@ impl NcApp {
             if self.ai.openai_loading.is_none() {
                 self.refresh_openai_models();
             }
+            if self.ai.grok_loading.is_none() {
+                self.refresh_grok_models();
+            }
         }
         ui.ctx().request_repaint_after(std::time::Duration::from_secs(5));
-        section(ui, &pal, tr(lang, "ai_engine"));
-        card(ui, &pal, |ui| {
-            setting_row(ui, &pal, tr(lang, "ai_engine_pick"), "", |ui| {
-                let opts = [
-                    (EngineChoice::Ollama, tr(lang, "ai_ollama_short").to_string()),
-                    (EngineChoice::Claude, tr(lang, "ai_claude_short").to_string()),
-                    (EngineChoice::OpenAi, tr(lang, "ai_openai_short").to_string()),
-                ];
-                segmented(ui, &pal, &mut self.prefs.ai.engine, &opts);
-            });
-            ui.add_space(8.0);
-            if self.prefs.ai.leaves_this_mac() {
-                status_pill(ui, &pal, tr(lang, crate::ai_panel::cloud_note_key(self.prefs.ai.engine)), "orange");
-            } else {
-                status_pill(ui, &pal, tr(lang, "ai_local_note"), "green");
-            }
-        });
-        ui.add_space(14.0);
-        match self.prefs.ai.engine.provider() {
-            None => self.ollama_card(ui),
-            Some(p) => self.cloud_card(ui, p),
-        }
-        ui.add_space(14.0);
-        self.meeting_card(ui);
     }
 
-    /// Speech model, language and note template for `/meeting` blocks.
+    /// Speech model, language and note template for `/meeting` blocks: icons for choices, one line each.
     fn meeting_card(&mut self, ui: &mut Ui) {
+        use crate::widgets::{cycle, icon_action, icon_choice, srow, srow_tip, Glyph};
         use notecraft_meeting::MODELS;
         let pal = self.pal;
         let lang = self.prefs.lang;
-        section(ui, &pal, tr(lang, "set_meeting"));
-        card(ui, &pal, |ui| {
-            for (n, m) in MODELS.iter().enumerate() {
-                if n > 0 {
-                    row_divider(ui, &pal);
-                }
-                let chosen = self.prefs.meeting.model == m.id;
-                let note = tr(lang, &format!("model_{}", m.note));
-                let hint = format!("{note}, {} MB", m.size_mb);
-                let installed = m.installed();
-                let downloading = self.meeting_view().download.is_some();
-                let title = format!("{}{}", m.label, if chosen { "  ✓" } else { "" });
-                setting_row(ui, &pal, &title, &hint, |ui| {
-                    if installed {
-                        if !chosen && ui.button(tr(lang, "choose")).clicked() {
-                            self.prefs.meeting.model = m.id.to_string();
-                        }
-                        if ui.button(tr(lang, "delete")).clicked() {
-                            let _ = m.delete();
-                        }
-                    } else if ui.add_enabled(!downloading, egui::Button::new(tr(lang, "meeting_download"))).clicked() {
+        let downloading = self.meeting_view().download.is_some();
+        let faint = Some(pal.text_faint);
+        for m in MODELS.iter() {
+            let chosen = self.prefs.meeting.model == m.id;
+            let sub = format!("{}, {} MB", tr(lang, &format!("model_{}", m.note)), m.size_mb);
+            let installed = m.installed();
+            srow(ui, &pal, m.label, &sub, None, |ui| {
+                if installed {
+                    if icon_action(ui, &pal, Glyph::Trash, tr(lang, "delete"), None).clicked() {
+                        let _ = m.delete();
+                    }
+                    if icon_choice(ui, &pal, Glyph::Check, chosen, tr(lang, "choose")).clicked() && !chosen {
                         self.prefs.meeting.model = m.id.to_string();
-                        self.meeting_action(crate::meeting::MeetingAction::DownloadModel);
                     }
-                });
-            }
-            row_divider(ui, &pal);
-            {
-                use notecraft_meeting::models::{parakeet_delete, parakeet_installed, PARAKEET_MB};
-                let installed = parakeet_installed();
-                let downloading = self.meeting_view().download.is_some();
-                let hint_text = format!("{}, {PARAKEET_MB} MB", tr(lang, "parakeet_note"));
-                setting_row(ui, &pal, "Parakeet", &hint_text, |ui| {
-                    if installed {
-                        if ui.button(tr(lang, "delete")).clicked() {
-                            let _ = parakeet_delete();
-                        }
-                    } else if ui.add_enabled(!downloading, egui::Button::new(tr(lang, "meeting_download"))).clicked() {
-                        self.meeting_action(crate::meeting::MeetingAction::DownloadParakeet);
-                    }
-                });
-            }
-            if let Some((name, frac)) = self.meeting_view().download {
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::ProgressBar::new(frac).desired_width(260.0).text(format!("{name} {:.0}%", frac * 100.0)),
-                    );
-                    if ui.button(tr(lang, "cancel")).clicked() {
-                        self.meeting_action(crate::meeting::MeetingAction::CancelDownload);
-                    }
-                });
-            }
-            hint(ui, &pal, tr(lang, "meeting_speech_hint"));
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "meeting_source"), tr(lang, "meeting_source_hint"), |ui| {
-                let label = |id: &str| match id {
-                    "system" => tr(lang, "meeting_source_system"),
-                    "both" => tr(lang, "meeting_source_both"),
-                    _ => tr(lang, "meeting_source_mic"),
-                };
-                crate::widgets::name_combo(
-                    egui::ComboBox::from_id_salt("meeting-source-setting")
-                        .width(260.0)
-                        .selected_text(label(&self.prefs.meeting.source))
-                        .show_ui(ui, |ui| {
-                            for id in ["mic", "system", "both"] {
-                                ui.selectable_value(&mut self.prefs.meeting.source, id.to_string(), label(id));
-                            }
-                        }),
-                    tr(lang, "combo_source"),
-                );
+                } else if icon_action(
+                    ui,
+                    &pal,
+                    Glyph::Download,
+                    tr(lang, "meeting_download"),
+                    downloading.then_some(pal.text_faint),
+                )
+                .clicked()
+                    && !downloading
+                {
+                    self.prefs.meeting.model = m.id.to_string();
+                    self.meeting_action(crate::meeting::MeetingAction::DownloadModel);
+                }
             });
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "meeting_microphone"), "", |ui| {
-                let (devices, default) = notecraft_meeting::input_devices();
-                let default_label = match &default {
-                    Some(d) => format!("{} ({d})", tr(lang, "meeting_mic_default")),
-                    None => tr(lang, "meeting_mic_default").to_string(),
-                };
-                let shown = if self.prefs.meeting.microphone.is_empty() {
-                    default_label.clone()
+        }
+        {
+            use notecraft_meeting::models::{parakeet_delete, parakeet_installed, PARAKEET_MB};
+            let installed = parakeet_installed();
+            let sub = format!("{}, {PARAKEET_MB} MB", tr(lang, "parakeet_short"));
+            srow_tip(ui, &pal, "Parakeet", &sub, None, tr(lang, "parakeet_note"), |ui| {
+                if installed {
+                    if icon_action(ui, &pal, Glyph::Trash, tr(lang, "delete"), None).clicked() {
+                        let _ = parakeet_delete();
+                    }
+                } else if icon_action(
+                    ui,
+                    &pal,
+                    Glyph::Download,
+                    tr(lang, "meeting_download"),
+                    downloading.then(|| faint.unwrap()),
+                )
+                .clicked()
+                    && !downloading
+                {
+                    self.meeting_action(crate::meeting::MeetingAction::DownloadParakeet);
+                }
+            });
+        }
+        if let Some((name, frac)) = self.meeting_view().download {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.add_space(10.0);
+                ui.add(egui::ProgressBar::new(frac).desired_width(300.0).text(format!("{name} {:.0}%", frac * 100.0)));
+                if crate::widgets::text_link(ui, &pal, tr(lang, "cancel")).clicked() {
+                    self.meeting_action(crate::meeting::MeetingAction::CancelDownload);
+                }
+            });
+        }
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        // what is recorded: the microphone, the system audio, or both
+        srow_tip(ui, &pal, tr(lang, "meeting_source"), "", None, tr(lang, "meeting_source_hint"), |ui| {
+            for (id, g, k) in [
+                ("both", Glyph::Both, "meeting_source_both"),
+                ("system", Glyph::Speaker, "meeting_source_system"),
+                ("mic", Glyph::Mic, "meeting_source_mic"),
+            ] {
+                if icon_choice(ui, &pal, g, self.prefs.meeting.source == id, tr(lang, k)).clicked() {
+                    self.prefs.meeting.source = id.to_string();
+                }
+            }
+        });
+        // the microphone: a click steps to the next one
+        srow(ui, &pal, tr(lang, "meeting_microphone"), "", None, |ui| {
+            let (devices, default) = notecraft_meeting::input_devices();
+            let default_label = match &default {
+                Some(d) => format!("{} ({d})", tr(lang, "meeting_mic_default")),
+                None => tr(lang, "meeting_mic_default").to_string(),
+            };
+            let short = |s: &str| -> String {
+                if s.chars().count() > 26 {
+                    format!("{}…", s.chars().take(25).collect::<String>())
                 } else {
-                    self.prefs.meeting.microphone.clone()
-                };
-                crate::widgets::name_combo(
-                    egui::ComboBox::from_id_salt("meeting-microphone").width(260.0).selected_text(shown).show_ui(
-                        ui,
-                        |ui| {
-                            ui.selectable_value(&mut self.prefs.meeting.microphone, String::new(), default_label);
-                            for d in devices {
-                                ui.selectable_value(&mut self.prefs.meeting.microphone, d.clone(), d);
-                            }
-                        },
-                    ),
-                    tr(lang, "combo_mic"),
-                );
-            });
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "meeting_spoken_language"), "", |ui| {
-                let opts = [
-                    ("auto".to_string(), tr(lang, "meeting_lang_auto").to_string()),
-                    ("en".to_string(), tr(lang, "meeting_lang_en").to_string()),
-                    ("fr".to_string(), tr(lang, "meeting_lang_fr").to_string()),
-                ];
-                let current = opts.iter().find(|(k, _)| *k == self.prefs.meeting.language).map(|(_, l)| l.clone());
-                crate::widgets::name_combo(
-                    egui::ComboBox::from_id_salt("meeting-language")
-                        .width(220.0)
-                        .selected_text(current.unwrap_or_default())
-                        .show_ui(ui, |ui| {
-                            for (k, l) in &opts {
-                                ui.selectable_value(&mut self.prefs.meeting.language, k.clone(), l);
-                            }
-                        }),
-                    tr(lang, "combo_language"),
-                );
-            });
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "meeting_engine"), tr(lang, "meeting_engine_sub"), |ui| {
-                let label = |id: &str| match id {
-                    "whisper" => tr(lang, "engine_whisper"),
-                    "parakeet" => tr(lang, "engine_parakeet"),
-                    _ => tr(lang, "engine_auto"),
-                };
-                crate::widgets::name_combo(
-                    egui::ComboBox::from_id_salt("meeting-engine-setting")
-                        .width(260.0)
-                        .selected_text(label(&self.prefs.meeting.engine))
-                        .show_ui(ui, |ui| {
-                            for id in ["auto", "whisper", "parakeet"] {
-                                ui.selectable_value(&mut self.prefs.meeting.engine, id.to_string(), label(id));
-                            }
-                        }),
-                    tr(lang, "meeting_engine"),
-                );
-            });
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "meeting_vocabulary"), tr(lang, "meeting_vocabulary_sub"), |_| {});
+                    s.to_string()
+                }
+            };
+            let mut opts: Vec<(String, Glyph, String)> = vec![(String::new(), Glyph::Mic, short(&default_label))];
+            for d in devices {
+                opts.push((d.clone(), Glyph::Mic, short(&d)));
+            }
+            cycle(ui, &pal, &mut self.prefs.meeting.microphone, &opts, true);
+        });
+        srow(ui, &pal, tr(lang, "meeting_spoken_language"), "", None, |ui| {
+            let opts = [
+                ("auto".to_string(), Glyph::Code("AUTO"), tr(lang, "meeting_lang_auto").to_string()),
+                ("en".to_string(), Glyph::Code("EN"), tr(lang, "meeting_lang_en").to_string()),
+                ("fr".to_string(), Glyph::Code("FR"), tr(lang, "meeting_lang_fr").to_string()),
+            ];
+            cycle(ui, &pal, &mut self.prefs.meeting.language, &opts, false);
+        });
+        srow_tip(ui, &pal, tr(lang, "meeting_engine"), "", None, tr(lang, "meeting_engine_sub"), |ui| {
+            let opts = [
+                ("auto".to_string(), Glyph::Code("AUTO"), tr(lang, "engine_auto").to_string()),
+                ("whisper".to_string(), Glyph::Code("Whisper"), tr(lang, "engine_whisper").to_string()),
+                ("parakeet".to_string(), Glyph::Code("Parakeet"), tr(lang, "engine_parakeet").to_string()),
+            ];
+            cycle(ui, &pal, &mut self.prefs.meeting.engine, &opts, false);
+        });
+        srow(ui, &pal, tr(lang, "meeting_template"), "", None, |ui| {
+            let opts: Vec<(String, Glyph, String)> = notecraft_ai::NOTE_TEMPLATES
+                .iter()
+                .map(|k| ((*k).to_string(), Glyph::None, crate::meeting::template_label(lang, k).to_string()))
+                .collect();
+            cycle(ui, &pal, &mut self.prefs.meeting.template, &opts, true);
+        });
+        if self.prefs.meeting.template == "custom" {
             ui.add(
-                egui::TextEdit::multiline(&mut self.prefs.meeting.vocabulary)
-                    .hint_text(tr(lang, "meeting_vocabulary_hint"))
-                    .desired_rows(2)
+                egui::TextEdit::multiline(&mut self.prefs.meeting.custom)
+                    .hint_text(tr(lang, "meeting_custom_hint"))
+                    .desired_rows(3)
                     .desired_width(f32::INFINITY),
             );
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "meeting_template"), "", |ui| {
-                crate::widgets::name_combo(
-                    egui::ComboBox::from_id_salt("meeting-template-setting")
-                        .width(220.0)
-                        .selected_text(crate::meeting::template_label(lang, &self.prefs.meeting.template))
-                        .show_ui(ui, |ui| {
-                            for key in notecraft_ai::NOTE_TEMPLATES {
-                                let l = crate::meeting::template_label(lang, key);
-                                ui.selectable_value(&mut self.prefs.meeting.template, (*key).to_string(), l);
-                            }
-                        }),
-                    tr(lang, "combo_template"),
-                );
-            });
-            if self.prefs.meeting.template == "custom" {
-                ui.add_space(6.0);
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.prefs.meeting.custom)
-                        .hint_text(tr(lang, "meeting_custom_hint"))
-                        .desired_rows(3)
-                        .desired_width(f32::INFINITY),
-                );
-            }
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "meeting_auto_notes"), "", |ui| {
-                ui.checkbox(&mut self.prefs.meeting.auto_notes, "");
-            });
-            ui.add_space(8.0);
-            if self.prefs.ai.leaves_this_mac() {
-                status_pill(ui, &pal, tr(lang, "meeting_privacy_cloud"), "orange");
-            } else {
-                status_pill(ui, &pal, tr(lang, "meeting_privacy_local"), "green");
-            }
-            hint(ui, &pal, tr(lang, "meeting_consent"));
+        }
+        srow(ui, &pal, tr(lang, "meeting_auto_notes"), "", None, |ui| {
+            toggle(ui, &pal, &mut self.prefs.meeting.auto_notes);
+        });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.add_space(10.0);
+            ui.label(RichText::new(tr(lang, "meeting_vocabulary")).size(13.0).color(pal.text));
+        });
+        ui.add_space(2.0);
+        ui.add(
+            egui::TextEdit::multiline(&mut self.prefs.meeting.vocabulary)
+                .hint_text(tr(lang, "meeting_vocabulary_hint"))
+                .desired_rows(2)
+                .desired_width(f32::INFINITY),
+        );
+        ui.add_space(10.0);
+        let cloud = self.prefs.ai.leaves_this_mac();
+        let note = tr(lang, if cloud { "meeting_privacy_cloud" } else { "meeting_privacy_local" });
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(10.0);
+            ui.label(RichText::new(note).size(12.0).color(if cloud { pal.danger } else { pal.text_faint }));
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(10.0);
+            ui.label(RichText::new(tr(lang, "meeting_consent")).size(12.0).color(pal.text_faint));
         });
     }
 
-    fn ollama_card(&mut self, ui: &mut Ui) {
-        let pal = self.pal;
-        let lang = self.prefs.lang;
+    // ---------------------------------------------------------------------- ai
+
+    fn ollama_state(&mut self) -> OllamaState {
         let active_local = self.prefs.ai.engine == EngineChoice::Ollama;
         let local_url = notecraft_ai::is_local_url(&self.prefs.ai.ollama_url);
         if (active_local || local_url)
@@ -623,9 +636,8 @@ impl NcApp {
         {
             self.refresh_models();
         }
-        let installed = notecraft_ai::ollama_installed();
-        let state = if self.ai.models_error.is_some() {
-            if installed {
+        if self.ai.models_error.is_some() {
+            if notecraft_ai::ollama_installed() {
                 OllamaState::Stopped
             } else {
                 OllamaState::Missing
@@ -636,242 +648,227 @@ impl NcApp {
             OllamaState::NoModel
         } else {
             OllamaState::Ready
-        };
-        let mut refresh = false;
-        section(ui, &pal, tr(lang, "ai_ollama"));
-        card(ui, &pal, |ui| {
-            setting_row(ui, &pal, "Ollama", tr(lang, "ai_ollama_sub"), |ui| match state {
-                OllamaState::Checking => {
-                    ui.spinner();
-                }
-                OllamaState::Ready => status_pill(ui, &pal, tr(lang, "ollama_ready"), "green"),
-                OllamaState::NoModel => status_pill(ui, &pal, tr(lang, "ollama_no_model"), "orange"),
-                OllamaState::Stopped => status_pill(ui, &pal, tr(lang, "ollama_stopped"), "orange"),
-                OllamaState::Missing => status_pill(ui, &pal, tr(lang, "ollama_missing"), "gray"),
-            });
-            row_divider(ui, &pal);
-            match state {
-                OllamaState::Missing => {
-                    hint(ui, &pal, tr(lang, "ollama_missing_text"));
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(tr(lang, "ollama_download")).clicked() {
-                            ui.ctx().open_url(egui::OpenUrl::new_tab("https://ollama.com/download"));
-                        }
-                        refresh = ui.button(tr(lang, "ollama_refresh")).clicked();
-                    });
-                }
-                OllamaState::Stopped => {
-                    hint(ui, &pal, tr(lang, "ollama_stopped_text"));
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(tr(lang, "ollama_launch")).clicked() {
-                            let _ = std::process::Command::new("open").args(["-a", "Ollama"]).spawn();
-                        }
-                        refresh = ui.button(tr(lang, "ollama_refresh")).clicked();
-                    });
-                }
-                OllamaState::NoModel => {
-                    hint(ui, &pal, tr(lang, "ai_no_models"));
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(tr(lang, "ollama_copy_pull")).clicked() {
-                            ui.ctx().copy_text("ollama pull llama3.2".into());
-                            self.toast = Some((tr(lang, "copied").into(), Instant::now()));
-                        }
-                        refresh = ui.button(tr(lang, "ollama_refresh")).clicked();
-                    });
-                }
-                OllamaState::Ready | OllamaState::Checking => {
-                    setting_row(ui, &pal, tr(lang, "ai_model"), "", |ui| {
-                        refresh = ui.button(tr(lang, "ollama_refresh")).clicked();
-                        let current = if self.prefs.ai.ollama_model.is_empty() {
-                            "—".to_string()
-                        } else {
-                            self.prefs.ai.ollama_model.clone()
-                        };
-                        crate::widgets::name_combo(
-                            egui::ComboBox::from_id_salt("ollama-model").selected_text(current).width(180.0).show_ui(
-                                ui,
-                                |ui| {
-                                    for m in self.ai.models.clone() {
-                                        ui.selectable_value(&mut self.prefs.ai.ollama_model, m.clone(), m);
-                                    }
-                                },
-                            ),
-                            tr(lang, "combo_model"),
-                        );
-                    });
-                }
-            }
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "ai_address"), "", |ui| {
-                ui.add(egui::TextEdit::singleline(&mut self.prefs.ai.ollama_url).desired_width(220.0));
-            });
-        });
-        if refresh {
-            self.ai.models_error = None;
-            self.refresh_models();
         }
     }
 
-    /// Key and model of a cloud service (Claude or OpenAI): the same three rows for both.
-    fn cloud_card(&mut self, ui: &mut Ui, provider: keychain::Provider) {
+    fn key_status_slot(&mut self, p: keychain::Provider) -> &mut Option<String> {
+        match p {
+            keychain::Provider::Claude => &mut self.ai.key_status,
+            keychain::Provider::OpenAi => &mut self.ai.openai_key_status,
+            keychain::Provider::Grok => &mut self.ai.grok_key_status,
+        }
+    }
+
+    /// What is stored for a cloud service: a masked key, "env" (taken from the environment) or nothing.
+    fn key_status(&mut self, provider: keychain::Provider) -> String {
+        if let Some(s) = self.key_status_slot(provider).clone() {
+            return s;
+        }
+        let s = if keychain::has_key(provider) {
+            keychain::load_key(provider).map(|k| keychain::masked(&k)).unwrap_or_default()
+        } else if keychain::load_key(provider).is_some() {
+            "env".to_string()
+        } else {
+            String::new()
+        };
+        *self.key_status_slot(provider) = Some(s.clone());
+        s
+    }
+
+    /// The models a cloud service offers: its own list once it answers, a short known one until then.
+    fn provider_models(&self, p: keychain::Provider) -> Vec<String> {
+        let (list, fallback): (&Vec<String>, &[&str]) = match p {
+            keychain::Provider::Claude => (&self.ai.claude_models, notecraft_ai::CLAUDE_FALLBACK_MODELS),
+            keychain::Provider::OpenAi => (&self.ai.openai_models, notecraft_ai::OPENAI_FALLBACK_MODELS),
+            keychain::Provider::Grok => (&self.ai.grok_models, notecraft_ai::GROK_FALLBACK_MODELS),
+        };
+        if list.is_empty() {
+            fallback.iter().map(|m| m.to_string()).collect()
+        } else {
+            list.clone()
+        }
+    }
+
+    /// The AI lines. First: where the text goes, as icons (this Mac, Claude, OpenAI, Grok), with the
+    /// key of a cloud service. Second: the model, in a small menu.
+    fn ai_row(&mut self, ui: &mut Ui) {
+        use crate::widgets::{icon_action, icon_choice, model_menu, srow, text_link, Glyph};
         let pal = self.pal;
         let lang = self.prefs.lang;
-        let openai = provider == keychain::Provider::OpenAi;
-        let cached = if openai { self.ai.openai_key_status.clone() } else { self.ai.key_status.clone() };
-        let status = match cached {
-            Some(s) => s,
-            None => {
-                let s = if keychain::has_key(provider) {
-                    keychain::load_key(provider).map(|k| keychain::masked(&k)).unwrap_or_default()
-                } else if keychain::load_key(provider).is_some() {
-                    "env".to_string()
-                } else {
-                    String::new()
-                };
-                if openai {
-                    self.ai.openai_key_status = Some(s.clone());
-                } else {
-                    self.ai.key_status = Some(s.clone());
-                }
-                s
+        let engine = self.prefs.ai.engine;
+        let provider = engine.provider();
+        let ostate = if provider.is_none() { self.ollama_state() } else { OllamaState::Ready };
+        let key = provider.map(|p| self.key_status(p)).unwrap_or_default();
+        let (sub, bad) = match provider {
+            None => match ostate {
+                OllamaState::Ready | OllamaState::Checking => (tr(lang, "ai_local_note"), false),
+                OllamaState::NoModel => (tr(lang, "ollama_no_model"), true),
+                OllamaState::Stopped => (tr(lang, "ollama_stopped"), true),
+                OllamaState::Missing => (tr(lang, "ollama_missing"), true),
+            },
+            Some(_) if key.is_empty() => (tr(lang, "ai_key_missing"), true),
+            Some(_) => (tr(lang, crate::ai_panel::cloud_note_key(engine)), false),
+        };
+        let mut models: Vec<String> = match provider {
+            None => self.ai.models.clone(),
+            Some(p) => self.provider_models(p),
+        };
+        let current = self.prefs.ai.model().to_string();
+        if !current.is_empty() && !models.contains(&current) && !models.is_empty() {
+            models.insert(0, current.clone());
+        }
+
+        let mut pick: Option<EngineChoice> = None;
+        let mut key_resp: Option<egui::Response> = None;
+        let mut open_key = false;
+        srow(ui, &pal, tr(lang, "ai_title"), sub, bad.then_some(pal.danger), |ui| {
+            // right to left: the key, then the services from the last to the first
+            if provider.is_some() {
+                let tint = key.is_empty().then_some(pal.danger);
+                let r = icon_action(ui, &pal, Glyph::Key, tr(lang, "ai_key"), tint);
+                open_key = r.clicked();
+                key_resp = Some(r);
             }
-        };
-        let mut save = false;
-        let mut remove = false;
-        let mut refresh = false;
-        let (models, loading, error) = if openai {
-            (self.ai.openai_models.clone(), self.ai.openai_loading.is_some(), self.ai.openai_error.clone())
-        } else {
-            (self.ai.claude_models.clone(), self.ai.claude_loading.is_some(), self.ai.claude_error.clone())
-        };
-        let title = if openai { "ai_key_title_openai" } else { "ai_key_title" };
-        section(ui, &pal, tr(lang, title));
-        card(ui, &pal, |ui| {
-            setting_row(ui, &pal, tr(lang, "ai_key"), "", |ui| {
-                let can = !self.ai.key_input.trim().is_empty();
-                if ui.add_enabled(can, egui::Button::new(tr(lang, "save_keychain"))).clicked() {
-                    save = true;
+            for (e, g, k) in [
+                (EngineChoice::Grok, Glyph::Grok, "ai_grok_short"),
+                (EngineChoice::OpenAi, Glyph::OpenAi, "ai_openai_short"),
+                (EngineChoice::Claude, Glyph::Sparkle, "ai_claude_short"),
+                (EngineChoice::Ollama, Glyph::Laptop, "ai_ollama_short"),
+            ] {
+                if icon_choice(ui, &pal, g, engine == e, tr(lang, k)).clicked() {
+                    pick = Some(e);
                 }
+            }
+        });
+
+        let ready = provider.is_some() || matches!(ostate, OllamaState::Ready | OllamaState::Checking);
+        let mut model: Option<String> = None;
+        let (mut launch, mut download, mut copy) = (false, false, false);
+        srow(ui, &pal, tr(lang, "ai_model"), "", None, |ui| {
+            if ready {
+                if !models.is_empty() {
+                    model = model_menu(ui, &pal, &current, &models);
+                }
+            } else {
+                match ostate {
+                    OllamaState::Missing => download = text_link(ui, &pal, tr(lang, "ollama_download")).clicked(),
+                    OllamaState::Stopped => launch = text_link(ui, &pal, tr(lang, "ollama_launch")).clicked(),
+                    _ => copy = text_link(ui, &pal, tr(lang, "ollama_copy_pull")).clicked(),
+                }
+            }
+        });
+
+        if let Some(e) = pick {
+            self.prefs.ai.engine = e;
+            match e.provider() {
+                Some(p) => {
+                    // a service without a key cannot answer: ask for the key right away
+                    if self.key_status(p).is_empty() {
+                        self.ai.key_open = true;
+                    }
+                }
+                None => {
+                    self.ai.models_error = None;
+                    self.refresh_models();
+                }
+            }
+        }
+        if let Some(m) = model {
+            self.prefs.ai.set_model(m);
+        }
+        if open_key {
+            self.ai.key_open = !self.ai.key_open;
+        }
+        if download {
+            ui.ctx().open_url(egui::OpenUrl::new_tab("https://ollama.com/download"));
+        }
+        if launch {
+            let _ = std::process::Command::new("open").args(["-a", "Ollama"]).spawn();
+            self.ai.models_error = None;
+        }
+        if copy {
+            ui.ctx().copy_text("ollama pull llama3.2".into());
+            self.toast = Some((tr(lang, "copied").into(), Instant::now()));
+        }
+
+        // the key, in a small box under its icon
+        let Some(p) = self.prefs.ai.engine.provider() else {
+            self.ai.key_open = false;
+            return;
+        };
+        let Some(anchor) = key_resp else { return };
+        if !self.ai.key_open {
+            return;
+        }
+        let (placeholder, env_key, get_url) = match p {
+            keychain::Provider::Claude => ("sk-ant-…", "ai_key_env", "https://console.anthropic.com/settings/keys"),
+            keychain::Provider::OpenAi => ("sk-…", "ai_key_env_openai", "https://platform.openai.com/api-keys"),
+            keychain::Provider::Grok => ("xai-…", "ai_key_env_grok", "https://console.x.ai"),
+        };
+        let status = self.key_status(p);
+        let mut open = true;
+        let (mut save, mut remove) = (false, false);
+        egui::Popup::from_response(&anchor)
+            .id(Id::unique("ai-key"))
+            .open_bool(&mut open)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_width(260.0);
+                crate::widgets::menu_label(ui, &pal, tr(lang, "ai_key"));
+                ui.add_space(2.0);
                 ui.add(
                     egui::TextEdit::singleline(&mut self.ai.key_input)
                         .password(true)
-                        .desired_width(220.0)
-                        .hint_text(if openai { "sk-…" } else { "sk-ant-…" }),
+                        .desired_width(f32::INFINITY)
+                        .hint_text(placeholder),
                 );
-            });
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "ai_key_state"), "", |ui| {
-                if !status.is_empty()
-                    && status != "env"
-                    && ui.link(RichText::new(tr(lang, "remove_key")).color(pal.danger)).clicked()
-                {
-                    remove = true;
-                }
-                let text = if status.is_empty() {
-                    tr(lang, "ai_key_none").to_string()
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(!self.ai.key_input.trim().is_empty(), egui::Button::new(tr(lang, "save_keychain")))
+                        .clicked()
+                    {
+                        save = true;
+                    }
+                    if !status.is_empty() && status != "env" && text_link(ui, &pal, tr(lang, "remove_key")).clicked() {
+                        remove = true;
+                    }
+                });
+                let line = if status.is_empty() {
+                    tr(lang, "ai_key_missing").to_string()
                 } else if status == "env" {
-                    tr(lang, if openai { "ai_key_env_openai" } else { "ai_key_env" }).to_string()
+                    tr(lang, env_key).to_string()
                 } else {
                     format!("{} · {status}", tr(lang, "ai_key_stored"))
                 };
-                ui.label(RichText::new(text).color(pal.text_secondary));
+                ui.add_space(4.0);
+                ui.label(RichText::new(line).size(12.0).color(pal.text_faint));
+                ui.hyperlink_to(RichText::new(tr(lang, "ai_key_get")).size(12.0), get_url);
             });
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "ai_model"), "", |ui| {
-                let chosen = if openai { &mut self.prefs.ai.openai_model } else { &mut self.prefs.ai.claude_model };
-                // the account's own list once it answers; until then (no key yet, offline) a short
-                // list of well-known models, so the choice is always a menu
-                if loading {
-                    ui.spinner();
-                } else if !models.is_empty() && ui.button(tr(lang, "ollama_refresh")).clicked() {
-                    refresh = true;
-                }
-                let current = chosen.clone();
-                let mut all: Vec<String> = if models.is_empty() {
-                    let fallback: &[&str] = if openai {
-                        notecraft_ai::OPENAI_FALLBACK_MODELS
-                    } else {
-                        notecraft_ai::CLAUDE_FALLBACK_MODELS
-                    };
-                    fallback.iter().map(|m| m.to_string()).collect()
-                } else {
-                    models.clone()
-                };
-                // a chosen model the list no longer shows stays selectable
-                if !all.contains(&current) {
-                    all.insert(0, current.clone());
-                }
-                crate::widgets::name_combo(
-                    egui::ComboBox::from_id_salt(if openai { "openai-model" } else { "claude-model" })
-                        .selected_text(current)
-                        .width(200.0)
-                        .show_ui(ui, |ui| {
-                            for m in all {
-                                ui.selectable_value(chosen, m.clone(), m);
-                            }
-                        }),
-                    tr(lang, "combo_model"),
-                );
-            });
-            if let Some(e) = &error {
-                hint(ui, &pal, e);
-            }
-        });
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            hint(ui, &pal, tr(lang, "ai_key_help"));
-            ui.hyperlink_to(
-                RichText::new(tr(lang, "ai_key_get")).size(12.0),
-                if openai {
-                    "https://platform.openai.com/api-keys"
-                } else {
-                    "https://console.anthropic.com/settings/keys"
-                },
-            );
-        });
-        if refresh {
-            if openai {
-                self.refresh_openai_models();
-            } else {
-                self.refresh_claude_models();
-            }
-        }
+        self.ai.key_open = open;
         if save {
-            match keychain::save_key(provider, self.ai.key_input.trim()) {
+            match keychain::save_key(p, self.ai.key_input.trim()) {
                 Ok(()) => {
                     self.ai.key_input.clear();
-                    if openai {
-                        self.ai.openai_key_status = None;
-                        self.refresh_openai_models();
-                    } else {
-                        self.ai.key_status = None;
-                        self.refresh_claude_models();
-                    }
+                    self.ai.key_open = false;
+                    *self.key_status_slot(p) = None;
+                    self.refresh_models_for(p);
                     self.toast = Some((tr(lang, "ai_key_saved").into(), Instant::now()));
                 }
                 Err(e) => self.toast = Some((e, Instant::now())),
             }
         }
         if remove {
-            let _ = keychain::delete_key(provider);
-            if openai {
-                self.ai.openai_key_status = None;
-                self.ai.openai_models.clear();
-                self.ai.openai_error = None;
-            } else {
-                self.ai.key_status = None;
-                self.ai.claude_models.clear();
-                self.ai.claude_error = None;
-            }
+            let _ = keychain::delete_key(p);
+            self.forget_models_for(p);
         }
     }
 
     // -------------------------------------------------------------- assistants
 
+    /// The MCP server: what it is in one line, two switches, and the two apps it can be connected to.
     fn tab_assistants(&mut self, ui: &mut Ui) {
+        use crate::widgets::{srow, text_link};
         let pal = self.pal;
         let lang = self.prefs.lang;
         page_title(ui, &pal, tr(lang, "set_assistants"), tr(lang, "set_assistants_sub"));
@@ -886,39 +883,20 @@ impl NcApp {
         let opts_id = egui::Id::unique("mcp-options");
         let mut opts: McpOptions = ui.data_mut(|d| d.get_temp(opts_id)).unwrap_or_default();
 
-        section(ui, &pal, tr(lang, "mcp_who"));
-        let levels = [
-            (McpLevel::Readonly, "mcp_level_ro", "mcp_level_ro_desc"),
-            (McpLevel::Standard, "mcp_level_rw", "mcp_level_rw_desc"),
-        ];
-        for (level, title, desc) in levels {
-            if choice_row(ui, &pal, opts.level == level, tr(lang, title), tr(lang, desc)).clicked() {
-                opts.level = level;
-            }
-            ui.add_space(4.0);
+        // two switches: may the apps edit, and may they delete
+        let mut write = opts.level == McpLevel::Standard;
+        srow(ui, &pal, tr(lang, "mcp_write_title"), tr(lang, "mcp_write_hint"), None, |ui| {
+            toggle(ui, &pal, &mut write);
+        });
+        opts.level = if write { McpLevel::Standard } else { McpLevel::Readonly };
+        if !write {
+            opts.delete = false;
         }
-        ui.add_space(4.0);
-        card(ui, &pal, |ui| {
-            // deleting only makes sense when the assistant may write
-            let can_delete = opts.level == McpLevel::Standard;
-            if !can_delete {
-                opts.delete = false;
-            }
-            ui.add_enabled_ui(can_delete, |ui| {
-                ui.checkbox(&mut opts.delete, tr(lang, "mcp_allow_delete"));
-            });
-            hint(ui, &pal, tr(lang, "mcp_allow_delete_hint"));
-            row_divider(ui, &pal);
-            setting_row(ui, &pal, tr(lang, "mcp_scope_title"), tr(lang, "mcp_scope_text"), |ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut opts.scope)
-                        .desired_width(220.0)
-                        .hint_text(tr(lang, "mcp_scope_placeholder")),
-                );
+        srow(ui, &pal, tr(lang, "mcp_allow_delete"), tr(lang, "mcp_allow_delete_hint"), None, |ui| {
+            ui.add_enabled_ui(write, |ui| {
+                toggle(ui, &pal, &mut opts.delete);
             });
         });
-        ui.add_space(4.0);
-        hint(ui, &pal, tr(lang, "mcp_permissions_hint"));
         ui.data_mut(|d| d.insert_temp(opts_id, opts.clone()));
 
         let mut extra: Vec<String> = Vec::new();
@@ -950,42 +928,51 @@ impl NcApp {
                 s
             }
         };
-        ui.add_space(14.0);
-        section(ui, &pal, tr(lang, "mcp_desktop_title"));
-        let (mut add, mut remove) = (false, false);
-        card(ui, &pal, |ui| {
-            setting_row(ui, &pal, tr(lang, "mcp_desktop_title"), "", |ui| {
-                let (text, color) = match state {
-                    DesktopState::Connected => (tr(lang, "mcp_desktop_connected"), "green"),
-                    DesktopState::Different => (tr(lang, "mcp_desktop_different"), "orange"),
-                    DesktopState::NotAdded => (tr(lang, "mcp_desktop_notadded"), "gray"),
-                    DesktopState::Missing => (tr(lang, "mcp_desktop_missing"), "gray"),
-                };
-                status_pill(ui, &pal, text, color);
-            });
-            ui.add_space(8.0);
-            if !bin_exists {
-                hint(ui, &pal, &format!("{} cargo build --release -p notecraft-mcp", tr(lang, "mcp_build_first")));
-                ui.add_space(6.0);
-            }
-            ui.horizontal(|ui| {
-                let can = bin_exists && state != DesktopState::Missing;
-                match state {
-                    DesktopState::Connected => {
-                        remove = ui.button(tr(lang, "mcp_desktop_remove")).clicked();
-                    }
-                    DesktopState::Different => {
-                        add = ui.add_enabled(can, egui::Button::new(tr(lang, "mcp_desktop_update"))).clicked();
-                        remove = ui.button(tr(lang, "mcp_desktop_remove")).clicked();
-                    }
-                    _ => {
-                        add = ui.add_enabled(can, egui::Button::new(tr(lang, "mcp_desktop_add"))).clicked();
-                    }
-                }
-            });
-            ui.add_space(6.0);
-            hint(ui, &pal, tr(lang, "mcp_desktop_hint"));
+
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            ui.add_space(10.0);
+            ui.label(RichText::new(tr(lang, "mcp_apps").to_uppercase()).size(11.0).color(pal.text_faint));
         });
+        ui.add_space(2.0);
+        let (mut add, mut remove) = (false, false);
+        let desktop_sub = match state {
+            DesktopState::Connected | DesktopState::Different => tr(lang, "mcp_desktop_connected"),
+            DesktopState::NotAdded => tr(lang, "mcp_desktop_notadded"),
+            DesktopState::Missing => tr(lang, "mcp_desktop_missing"),
+        };
+        let can = bin_exists && state != DesktopState::Missing;
+        srow(ui, &pal, tr(lang, "mcp_desktop_title"), desktop_sub, None, |ui| match state {
+            DesktopState::Connected => remove = text_link(ui, &pal, tr(lang, "mcp_desktop_remove")).clicked(),
+            DesktopState::Different => {
+                remove = text_link(ui, &pal, tr(lang, "mcp_desktop_remove")).clicked();
+                add = text_link(ui, &pal, tr(lang, "mcp_desktop_update")).clicked();
+            }
+            _ => {
+                ui.add_enabled_ui(can, |ui| {
+                    add = text_link(ui, &pal, tr(lang, "mcp_connect")).clicked();
+                });
+            }
+        });
+        let (mut code_add, mut code_copy) = (false, false);
+        let cli = mcp_setup::claude_cli().is_some();
+        srow(ui, &pal, tr(lang, "mcp_code_title"), if cli { "" } else { tr(lang, "mcp_code_missing") }, None, |ui| {
+            ui.add_enabled_ui(bin_exists && cli, |ui| {
+                code_add = text_link(ui, &pal, tr(lang, "mcp_connect")).clicked();
+            });
+            code_copy = text_link(ui, &pal, tr(lang, "mcp_code_copy")).clicked();
+        });
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(10.0);
+            let note = if bin_exists {
+                tr(lang, "mcp_footer").to_string()
+            } else {
+                format!("{} cargo build --release -p notecraft-mcp", tr(lang, "mcp_build_first"))
+            };
+            ui.label(RichText::new(note).size(12.0).color(pal.text_faint));
+        });
+
         if add {
             match mcp_setup::add(&bin_s, &args) {
                 Ok(()) => self.notify(tr(lang, "mcp_desktop_done")),
@@ -1000,33 +987,10 @@ impl NcApp {
             }
             ui.data_mut(|d| d.remove::<(String, DesktopState, f64)>(cache_id));
         }
-
-        ui.add_space(14.0);
-        let mut code_add = false;
-        section(ui, &pal, tr(lang, "mcp_code_title"));
-        card(ui, &pal, |ui| {
-            egui::Frame::NONE
-                .fill(pal.code_bg)
-                .corner_radius(egui::CornerRadius::same(6))
-                .inner_margin(egui::Margin::same(10))
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.add(egui::Label::new(RichText::new(&code_cmd).monospace().color(pal.text)).wrap());
-                });
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                let can = bin_exists && mcp_setup::claude_cli().is_some();
-                if ui.add_enabled(can, egui::Button::new(tr(lang, "mcp_code_add"))).clicked() {
-                    code_add = true;
-                }
-                if ui.button(tr(lang, "mcp_code_copy")).clicked() {
-                    ui.ctx().copy_text(code_cmd.clone());
-                    self.toast = Some((tr(lang, "copied").into(), Instant::now()));
-                }
-            });
-            ui.add_space(6.0);
-            hint(ui, &pal, tr(lang, "mcp_code_hint"));
-        });
+        if code_copy {
+            ui.ctx().copy_text(code_cmd.clone());
+            self.toast = Some((tr(lang, "copied").into(), Instant::now()));
+        }
         if code_add {
             match mcp_setup::add_to_claude_code(&bin_s, &args) {
                 Ok(()) => self.notify(tr(lang, "mcp_code_done")),
@@ -1040,16 +1004,19 @@ impl NcApp {
     fn tab_shortcuts(&mut self, ui: &mut Ui) {
         let pal = self.pal;
         let lang = self.prefs.lang;
-        page_title(ui, &pal, tr(lang, "shortcuts"), "");
-        card(ui, &pal, |ui| {
-            egui::Grid::new("shortcuts").num_columns(2).spacing([24.0, 8.0]).show(ui, |ui| {
-                for (k, v) in SHORTCUTS {
-                    ui.label(RichText::new(*k).monospace().color(pal.text));
-                    ui.label(RichText::new(*v).color(pal.text_secondary));
-                    ui.end_row();
-                }
-            });
-        });
+        for (i, (keys, desc)) in SHORTCUTS.iter().enumerate() {
+            if i == 9 {
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(10.0);
+                    ui.label(
+                        RichText::new(tr(lang, "shortcuts_editing").to_uppercase()).size(11.0).color(pal.text_faint),
+                    );
+                });
+                ui.add_space(2.0);
+            }
+            crate::widgets::shortcut_row(ui, &pal, keys, desc);
+        }
     }
 
     // ------------------------------------------------------------------- about

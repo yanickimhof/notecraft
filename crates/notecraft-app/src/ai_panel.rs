@@ -19,12 +19,14 @@ pub enum EngineChoice {
     Ollama,
     Claude,
     OpenAi,
+    Grok,
 }
 
 /// The i18n key of the "your text is sent to …" note for this engine.
 pub fn cloud_note_key(e: EngineChoice) -> &'static str {
     match e {
         EngineChoice::OpenAi => "ai_cloud_note_openai",
+        EngineChoice::Grok => "ai_cloud_note_grok",
         _ => "ai_cloud_note",
     }
 }
@@ -36,6 +38,7 @@ impl EngineChoice {
             EngineChoice::Ollama => None,
             EngineChoice::Claude => Some(keychain::Provider::Claude),
             EngineChoice::OpenAi => Some(keychain::Provider::OpenAi),
+            EngineChoice::Grok => Some(keychain::Provider::Grok),
         }
     }
 
@@ -45,6 +48,7 @@ impl EngineChoice {
             EngineChoice::Ollama => "Ollama",
             EngineChoice::Claude => "Claude",
             EngineChoice::OpenAi => "ChatGPT",
+            EngineChoice::Grok => "Grok",
         }
     }
 }
@@ -58,6 +62,7 @@ pub struct AiPrefs {
     pub ollama_model: String,
     pub claude_model: String,
     pub openai_model: String,
+    pub grok_model: String,
 }
 
 impl Default for AiPrefs {
@@ -68,6 +73,7 @@ impl Default for AiPrefs {
             ollama_model: String::new(),
             claude_model: notecraft_ai::DEFAULT_CLAUDE_MODEL.into(),
             openai_model: notecraft_ai::DEFAULT_OPENAI_MODEL.into(),
+            grok_model: notecraft_ai::DEFAULT_GROK_MODEL.into(),
         }
     }
 }
@@ -87,6 +93,21 @@ impl AiPrefs {
                 model: self.openai_model.clone(),
                 api_key: keychain::load_key(keychain::Provider::OpenAi).unwrap_or_default(),
             },
+            EngineChoice::Grok => Engine::Grok {
+                url: notecraft_ai::DEFAULT_GROK_URL.into(),
+                model: self.grok_model.clone(),
+                api_key: keychain::load_key(keychain::Provider::Grok).unwrap_or_default(),
+            },
+        }
+    }
+
+    /// Choose the model of the active engine.
+    pub fn set_model(&mut self, m: String) {
+        match self.engine {
+            EngineChoice::Ollama => self.ollama_model = m,
+            EngineChoice::Claude => self.claude_model = m,
+            EngineChoice::OpenAi => self.openai_model = m,
+            EngineChoice::Grok => self.grok_model = m,
         }
     }
 
@@ -96,12 +117,13 @@ impl AiPrefs {
             EngineChoice::Ollama => &self.ollama_model,
             EngineChoice::Claude => &self.claude_model,
             EngineChoice::OpenAi => &self.openai_model,
+            EngineChoice::Grok => &self.grok_model,
         }
     }
 
     pub fn leaves_this_mac(&self) -> bool {
         match self.engine {
-            EngineChoice::Claude | EngineChoice::OpenAi => true,
+            EngineChoice::Claude | EngineChoice::OpenAi | EngineChoice::Grok => true,
             EngineChoice::Ollama => !notecraft_ai::is_local_url(&self.ollama_url),
         }
     }
@@ -126,6 +148,8 @@ pub type RunningAi = (AiAction, Receiver<Result<String, AiError>>, Instant);
 
 #[derive(Default)]
 pub struct AiState {
+    /// The key box under the AI line of the settings is open.
+    pub key_open: bool,
     pub open: bool,
     pub question: String,
     pub ctx: Option<AiContext>,
@@ -147,6 +171,11 @@ pub struct AiState {
     pub openai_models: Vec<String>,
     pub openai_loading: Option<Receiver<Result<Vec<String>, AiError>>>,
     pub openai_error: Option<String>,
+    /// Same for the xAI API (Grok).
+    pub grok_key_status: Option<String>,
+    pub grok_models: Vec<String>,
+    pub grok_loading: Option<Receiver<Result<Vec<String>, AiError>>>,
+    pub grok_error: Option<String>,
     /// When both lists were last asked for (they are asked again when the AI page of Settings opens).
     pub checked: Option<Instant>,
 }
@@ -238,6 +267,50 @@ impl NcApp {
             let _ = tx.send(notecraft_ai::openai_models(notecraft_ai::DEFAULT_OPENAI_URL, &key, t));
         });
         self.ai.openai_loading = Some(rx);
+    }
+
+    /// Ask the xAI API which models this key can use.
+    pub fn refresh_grok_models(&mut self) {
+        let Some(key) = keychain::load_key(keychain::Provider::Grok) else {
+            self.ai.grok_models.clear();
+            return;
+        };
+        let (tx, rx) = channel();
+        std::thread::spawn(move || {
+            let t = Timeouts { connect: std::time::Duration::from_secs(4), total: std::time::Duration::from_secs(10) };
+            let _ = tx.send(notecraft_ai::grok_models(notecraft_ai::DEFAULT_GROK_URL, &key, t));
+        });
+        self.ai.grok_loading = Some(rx);
+    }
+
+    /// Ask a cloud service again which models it offers.
+    pub fn refresh_models_for(&mut self, p: keychain::Provider) {
+        match p {
+            keychain::Provider::Claude => self.refresh_claude_models(),
+            keychain::Provider::OpenAi => self.refresh_openai_models(),
+            keychain::Provider::Grok => self.refresh_grok_models(),
+        }
+    }
+
+    /// Forget what is known of a service (its key was removed).
+    pub fn forget_models_for(&mut self, p: keychain::Provider) {
+        match p {
+            keychain::Provider::Claude => {
+                self.ai.key_status = None;
+                self.ai.claude_models.clear();
+                self.ai.claude_error = None;
+            }
+            keychain::Provider::OpenAi => {
+                self.ai.openai_key_status = None;
+                self.ai.openai_models.clear();
+                self.ai.openai_error = None;
+            }
+            keychain::Provider::Grok => {
+                self.ai.grok_key_status = None;
+                self.ai.grok_models.clear();
+                self.ai.grok_error = None;
+            }
+        }
     }
 
     /// Solve the equation in block `bid`: on this Mac when the local solver can, otherwise with the AI.
@@ -380,6 +453,20 @@ impl NcApp {
                 ctx.request_repaint_after(std::time::Duration::from_millis(150));
             }
         }
+        if let Some(rx) = &self.ai.grok_loading {
+            if let Ok(r) = rx.try_recv() {
+                match r {
+                    Ok(list) => {
+                        self.ai.grok_error = None;
+                        self.ai.grok_models = list;
+                    }
+                    Err(e) => self.ai.grok_error = Some(e.to_string()),
+                }
+                self.ai.grok_loading = None;
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_millis(150));
+            }
+        }
         let Some((action, rx, _)) = &self.ai.running else { return };
         match rx.try_recv() {
             Ok(Ok(text)) => {
@@ -476,7 +563,7 @@ impl NcApp {
                 "Ollama · {}",
                 if self.prefs.ai.ollama_model.is_empty() { "…" } else { &self.prefs.ai.ollama_model }
             ),
-            EngineChoice::Claude | EngineChoice::OpenAi => {
+            EngineChoice::Claude | EngineChoice::OpenAi | EngineChoice::Grok => {
                 format!("{} · {}", self.prefs.ai.engine.name(), self.prefs.ai.model())
             }
         };
@@ -523,9 +610,7 @@ impl NcApp {
                                 .show(ui, |ui| {
                                     ui.set_width(width - 20.0);
                                     egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                                        ui.add(
-                                            egui::Label::new(RichText::new(&d.text).size(14.0).color(pal.text)).wrap(),
-                                        );
+                                        draft_view(ui, &pal, &d.text, width - 40.0);
                                     });
                                 });
                             ui.add_space(6.0);
@@ -632,5 +717,68 @@ impl NcApp {
             self.ai.open = false;
             self.ai.draft = None;
         }
+    }
+}
+
+/// The draft as rich text (titles, bullets, bold, italics, code) instead of raw Markdown.
+fn draft_view(ui: &mut egui::Ui, pal: &crate::theme::Palette, text: &str, width: f32) {
+    use eframe::egui::text::{LayoutJob, TextFormat};
+    use eframe::egui::FontId;
+    use notecraft_core::blocks::BlockKind;
+    let mut number = 0usize;
+    for b in blocks::from_markdown(text) {
+        if b.kind != BlockKind::Numbered {
+            number = 0;
+        }
+        let indent = f32::from(b.depth) * 18.0;
+        let (size, prefix, heading) = match &b.kind {
+            BlockKind::Heading(1) => (18.0, String::new(), true),
+            BlockKind::Heading(2) => (16.0, String::new(), true),
+            BlockKind::Heading(_) => (15.0, String::new(), true),
+            BlockKind::Bulleted => (14.0, "\u{2022}  ".to_string(), false),
+            BlockKind::Numbered => {
+                number += 1;
+                (14.0, format!("{number}.  "), false)
+            }
+            BlockKind::Todo { checked } => {
+                (14.0, if *checked { "\u{2611}  " } else { "\u{2610}  " }.to_string(), false)
+            }
+            BlockKind::Quote => (14.0, "\u{258f} ".to_string(), false),
+            _ => (14.0, String::new(), false),
+        };
+        let mut job = LayoutJob::default();
+        job.wrap.max_width = (width - indent).max(120.0);
+        let base = TextFormat { font_id: FontId::proportional(size), color: pal.text, ..Default::default() };
+        if !prefix.is_empty() {
+            job.append(&prefix, 0.0, TextFormat { color: pal.text_secondary, ..base.clone() });
+        }
+        for seg in notecraft_core::inline::parse(&b.text) {
+            if seg.marker {
+                continue;
+            }
+            let st = &seg.style;
+            let mut f = base.clone();
+            if st.bold || heading {
+                if crate::theme::has_weight_axis() {
+                    f.coords = crate::theme::weight(700.0);
+                } else {
+                    f.color = pal.text;
+                }
+            }
+            f.italics = st.italic;
+            if st.strike {
+                f.strikethrough = egui::Stroke::new(1.0, f.color);
+            }
+            if st.code {
+                f.font_id = FontId::monospace(size * 0.88);
+                f.background = pal.code_bg;
+            }
+            job.append(&b.text[seg.range.clone()], 0.0, f);
+        }
+        ui.add_space(if heading { 6.0 } else { 2.0 });
+        ui.horizontal_top(|ui| {
+            ui.add_space(indent);
+            ui.add(egui::Label::new(job).wrap());
+        });
     }
 }
