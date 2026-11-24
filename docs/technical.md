@@ -13,20 +13,20 @@ cargo test --workspace           # unit and integration tests
 ./target/release/notecraft-app ~/Notes         # open (or create) a workspace folder
 scripts/bundle-macos.sh                          # NoteCraft.app in target/NoteCraft.noindex
 scripts/install-macos.sh [--dmg]                 # install in /Applications, optionally build the DMG
-scripts/screenshots.sh                           # regenerate docs/screenshots
+scripts/screenshots.sh                           # regenerate docs/screenshots (needs a demo workspace)
 ```
 
-App options: `--workspace <folder>`, `--dark`, `--open <title>`, `--view table|board|list|gallery|calendar`, `--panel ai|settings|tabs|remind|present:<slide>`, `--screenshot <file.png>` (a fresh sample workspace, saved as PNG), `--export-icns <file>`.
+App options: `--workspace <folder>`, `--dark`, `--open <title>`, `--view table|board|list|gallery|calendar`, `--panel ai|settings|tabs|remind|present:<slide>`, `--screenshot <file.png>` (saves the window as PNG), `--export-icns <file>`.
 
 Checks run by CI (`.github/workflows/ci.yml`): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, the bundle script, `cargo audit` and `cargo deny`.
 
 ## Releases
 
 1. Update `CHANGELOG.md` and the version in `Cargo.toml`.
-2. `scripts/install-macos.sh --dmg` writes `target/release/NoteCraft.dmg` (the app is signed ad hoc, not notarised).
+2. `scripts/install-macos.sh --dmg` writes `target/release/NoteCraft.dmg` (not notarised; signed ad hoc).
 3. Tag `vX.Y.Z`, push the tag, and attach the DMG and its `.sha256` file to a GitHub release (`gh release create`). To republish a release for the same version, delete it with `gh release delete --cleanup-tag` and create it again on `main`; never force-push.
 
-Installing an update is manual (DMG or `scripts/install-macos.sh`). Notes are plain folders, so an update never touches them. A build signed ad hoc changes identity on every install, so macOS asks for the microphone again.
+Installing an update is manual (DMG or `scripts/install-macos.sh`). Notes are plain folders, so an update never touches them. `scripts/bundle-macos.sh` signs the app with a self-signed `NoteCraft Local` code-signing certificate when one is in the login keychain, and falls back to ad hoc otherwise. A stable identity keeps the Keychain and microphone permissions across rebuilds; an ad hoc build changes identity on every install, so macOS asks again.
 
 ## Crates
 
@@ -36,7 +36,7 @@ Installing an update is manual (DMG or `scripts/install-macos.sh`). Notes are pl
 | `notecraft-app` | The desktop app (eframe and egui) |
 | `notecraft-cli` | The `notecraft` command: `reindex`, `search`, `import`, `export`, `bench`, `snapshots`, `restore` |
 | `notecraft-mcp` | MCP server over stdio |
-| `notecraft-ai` | Ollama and Claude clients, prompts, Keychain access |
+| `notecraft-ai` | Ollama, Claude, OpenAI and Grok clients, model lists, prompts, Keychain access |
 | `notecraft-meeting` | Meeting notes: audio capture, chunking, Whisper transcription, model downloads, microphone permission |
 
 `app`, `cli` and `mcp` depend on `core`; `app` also uses `ai` and `meeting`. The largest modules are folders (`app/`, `editor/`, `dbview/`, `workspace/`) with helpers and tests in their own files. The core never depends on them. More in [architecture.md](architecture.md).
@@ -61,7 +61,7 @@ Installing an update is manual (DMG or `scripts/install-macos.sh`). Notes are pl
   parakeet/                                         Parakeet engine files (ONNX), downloaded on request
 ```
 
-Page front matter: `format, id, title, icon, cover, created, updated, parent, order, favorite, trashed, locked, encrypted`. Database rows add `properties:` keyed by property name. Bodies are readable Markdown: headings, lists, `- [ ]` to-dos, `<details>` toggles, `>` quotes, `> [!NOTE]` callouts, fenced code, `---`, images, files, `[[Page title]]` mentions, and inline `**bold**`, `*italic*`, `<u>underline</u>`, `~~strike~~` and `` `code` ``.
+Page front matter: `format, id, title, icon, cover, created, updated, parent, order, favorite, trashed, locked, encrypted`. Database rows add `properties:` keyed by property name. A block colour is a trailing `<!--c:NAME-->`: a text colour (`red`), a background (`bg-blue`) or both (`red bg-blue`). Bodies are readable Markdown: headings, lists, `- [ ]` to-dos, `<details>` toggles, `>` quotes, `> [!NOTE]` callouts, fenced code, `---`, images, files, `[[Page title]]` mentions, and inline `**bold**`, `*italic*`, `<u>underline</u>`, `~~strike~~` and `` `code` ``.
 
 The index is never the source of truth: delete it at any time and it is rebuilt when the workspace opens (or with Settings, General, Rebuild). Set `NOTECRAFT_INDEX_DIR` to move it.
 
@@ -88,17 +88,19 @@ A page with `encrypted: true` stores its body as an armored ChaCha20-Poly1305 bl
 - Block edits (update, move, delete) accept an `expect` argument: the current text of the block as last read. If the block changed since, the call is refused and the assistant must read again.
 - Permissions are chosen at start: read only, read and write (default), deletion tools only with `--allow-delete`, and `--scope` to limit an assistant to one page tree.
 - Locked pages stay read-only for assistants, and every call is written to an audit journal outside the notes folder.
-- Settings, Connected assistants shows the choices and can add the server to Claude Desktop (it edits `claude_desktop_config.json`, keeping a backup) or to Claude Code (`claude mcp add --scope user`).
+- Settings, MCP server shows the choices and can add the server to Claude Desktop (it edits `claude_desktop_config.json`, keeping a backup) or to Claude Code (`claude mcp add --scope user`).
 
 Tools cover pages (list, get, search, create, update, append, rename, move, duplicate, trash, restore, lock), databases (create, properties, rows, queries, templates) and files (attachments, Import from Evernote, Obsidian, Bear, Joplin, Word, HTML and CSV; Markdown export). The full reference is in [mcp.md](mcp.md).
 
 ## AI help
 
-Two engines, chosen in Settings, AI:
+Engines, chosen in Settings (icons: this Mac, Claude, OpenAI, Grok), each with a model menu fed by the provider's own model list, grouped by family and showing only the newest versions (the model in use is always kept):
 
 - **Ollama** (default) at `http://localhost:11434`, using models already installed. NøteCraft never downloads one. Everything stays on the Mac.
 - **Claude API** with your own key, stored in the macOS Keychain (service NøteCraft) or taken from `ANTHROPIC_API_KEY`. The panel and the top bar show that text leaves the Mac.
 - **OpenAI API** (ChatGPT models) with your own key, stored the same way (account `openai-api-key`) or taken from `OPENAI_API_KEY`; chat completions, model list read from the account.
+
+- **Grok (xAI)** with your own key, stored the same way (account `grok-api-key`) or taken from `XAI_API_KEY`; xAI's OpenAI compatible API at `https://api.x.ai`, default model `grok-4`.
 
 The answer is always a draft: insert below, replace the selection, copy or discard.
 
@@ -106,9 +108,9 @@ The answer is always a draft: insert below, replace the selection, copy or disca
 
 - Crate `notecraft-meeting`: `audio` (cpal capture on the UI thread, linear resampler to 16 kHz mono; sources: microphone, system audio through a Core Audio tap on the default output device, or both mixed), `chunker` (cuts at pauses, 6 to 25 s), `transcribe` (whisper-rs with Metal and, for English, NVIDIA Parakeet through ONNX Runtime with `parakeet-rs`; worker thread, `choose_engine`, vocabulary hint, noise filter; `parakeet-rs` 0.3 needs `ort` 2.0.0-rc.13, kept by Cargo.lock), `models` (ggml files and Parakeet ONNX files downloaded from Hugging Face into the app support folder), `permission` (AVCaptureDevice authorization on macOS).
 - The block is stored as `<!--meeting:Title-->`. The transcript is a `<details><summary>Transcript` toggle with one indented paragraph per chunk; the notes are ordinary blocks between the two.
-- `notecraft-ai::build_notes_prompt` turns the transcript and a template into the prompt; only text leaves the machine, and only with a cloud engine (Claude or OpenAI).
+- `notecraft-ai::build_notes_prompt` turns the transcript and a template into the prompt; only text leaves the machine, and only with a cloud engine (Claude, OpenAI or Grok).
 - System audio uses cpal's loopback (macOS 14.6+), pinned to a main-branch revision in `crates/notecraft-meeting/Cargo.toml` because released versions deliver silence; `NSAudioCaptureUsageDescription` in the bundle script is what lets macOS ask for permission. Mixing takes the part both tracks have reached, and pads one track only if the other stalls for more than a second.
-- macOS grants the microphone per code identity. Ad hoc signed builds change identity on every install, so the permission is asked again after a reinstall.
+- macOS grants the microphone per code identity. Ad hoc signed builds change identity on every install, so the permission is asked again after a reinstall; the `NoteCraft Local` signature avoids that.
 
 ## Keyboard shortcuts
 

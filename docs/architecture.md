@@ -10,7 +10,7 @@ NøteCraft is a Cargo workspace. The core has no UI dependency, so the app, the 
 | `notecraft-app` | Desktop app (eframe and egui): sidebar, page view, block editor, database views, quick finder, AI panel, settings |
 | `notecraft-cli` | `notecraft` command: `reindex`, `search`, `import`, `export`, `bench`, `snapshots`, `restore`, `version` |
 | `notecraft-mcp` | MCP server over stdio, optional `--read-only`, `--allow-delete`, `--scope` |
-| `notecraft-ai` | AI engines (Ollama on the Mac, Claude API, OpenAI API), API keys in the macOS Keychain, prompts |
+| `notecraft-ai` | AI engines (Ollama on the Mac, Claude, OpenAI and Grok APIs), API keys in the macOS Keychain, prompts |
 | `notecraft-meeting` | Meeting notes: audio capture, chunking, Whisper transcription, model downloads, microphone permission |
 
 Dependencies point one way: `app`, `cli` and `mcp` depend on `core`; `app` also depends on `ai` and `meeting`. The core never depends on them. Large modules are folders (`app/`, `editor/`, `dbview/`, `workspace/`) whose helpers and tests sit in their own files.
@@ -41,7 +41,7 @@ Every file the app writes starts with `format: <n>` (front matter of pages, rows
 1. Plain files are the source of truth; the index can be deleted at any time.
 2. Sync is left to the folder provider (kDrive, Dropbox, iCloud Drive). The app watches files, merges outside edits with unsaved typing and keeps a "conflict copy" when both sides changed.
 3. The app never runs git and never writes a `.git` folder.
-4. Network access is limited to what the user enables: a local Ollama address, the Claude or OpenAI API with the user's own key, and the one-time download of a speech model on request. There is no update check and no telemetry.
+4. Network access is limited to what the user enables: a local Ollama address, the Claude, OpenAI or Grok API with the user's own key, and the one-time download of a speech model on request. There is no update check and no telemetry.
 
 ## Build and release
 
