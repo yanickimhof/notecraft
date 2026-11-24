@@ -19,7 +19,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("set_security", "Security", "Sécurité"),
     ("set_security_sub", "Pages protected by a passphrase.", "Pages protégées par une phrase secrète."),
     ("set_ai", "Artificial intelligence", "Intelligence artificielle"),
-    ("set_ai_sub", "On this Mac or with Claude or ChatGPT.", "Sur ce Mac, avec Claude ou avec ChatGPT."),
+    ("set_ai_sub", "On this Mac or with Claude, ChatGPT or Grok.", "Sur ce Mac, avec Claude, ChatGPT ou Grok."),
     ("set_assistants", "MCP server", "Serveur MCP"),
     ("set_shortcuts", "Shortcuts", "Raccourcis"),
     ("set_about", "About", "À propos"),

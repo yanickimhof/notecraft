@@ -17,7 +17,8 @@ A workspace is a folder you choose. Each page is a Markdown file inside it, so y
 - Pages inside pages, shown as a tree you can drag around.
 - Headings, lists, to-dos, toggles, quotes, callouts, code, dividers, images and files. Type `/` to add anything, or use the usual Markdown shortcuts.
 - Bold, italic, underline, strikethrough, code, links and colours (also on part of a text).
-- Columns, a table of contents, simple tables, web bookmarks and whole databases shown inside a page.
+- Columns (drag a line to the right edge of another to make one), a table of contents, simple tables, web bookmarks and whole databases shown inside a page.
+- Select several lines (⇧↓ or drag the handles) and act on all of them at once: turn into, colour, group in a section, copy, cut, duplicate, move, delete. A text colour and a background colour can be combined.
 - Link pages with `[[Page name]]`; the other page shows a backlink.
 - Icons, covers, favourites, trash with restore.
 - **Tabs**: ⌘T opens a tab, ⌘-click on a page opens it in a new tab, ⌘W closes it. Tabs come back when you restart.
@@ -37,7 +38,6 @@ A workspace is a folder you choose. Each page is a Markdown file inside it, so y
 - Properties: text, number, select, multi-select, status, date, checkbox, link, email, phone, relation, person, files, unique ID, created and edited time, formula and rollup.
 - Views: Table, Board, List, Calendar, Gallery, Chart (bars, line, donut) and Timeline.
 - Filters, sorting, grouping and templates. Every row is also a full page.
-- In a table, the Open button and the clear control of a date appear when the pointer is over the row.
 
 ## Find
 
@@ -58,8 +58,8 @@ Quick finder with ⌘P and full text search across everything.
 ## Work with AI (optional)
 
 - Summarise, continue, improve or translate text, or ask a question about a page (⌘J).
-- Runs on your Mac with Ollama (nothing leaves your computer) or with your own Claude or ChatGPT (OpenAI) API key. You always see the result first: nothing changes until you click.
-- Connect Claude Desktop or Claude Code (Settings, Connected assistants) so they can read and edit your notes through MCP, with permissions you choose: read only, read and write, or deletion allowed, and optionally limited to one page tree.
+- Runs on your Mac with Ollama (nothing leaves your computer) or with your own Claude, ChatGPT (OpenAI) or Grok (xAI) API key. Pick the engine with its icon in Settings, then the model from a menu grouped by family. You always see the result first: nothing changes until you click.
+- Connect Claude Desktop or Claude Code (Settings, MCP server) so they can read and edit your notes through MCP, with permissions you choose: read only, read and write, or deletion allowed, and optionally limited to one page tree.
 
 ## Meeting notes (optional)
 
@@ -70,13 +70,13 @@ Quick finder with ⌘P and full text search across everything.
 
 In Settings, Meetings, you can add a **custom vocabulary** (names, projects, jargon, separated by commas) so the transcript spells them right, pick the speech model (Base, Small or Large v3 Turbo) and the **engine**. **Parakeet** (NVIDIA, about 670 MB) is downloaded on request and removed with one click; it is much faster and handles English and 24 other languages, but ignores the custom vocabulary. In *Automatic* mode NøteCraft uses it only for English, when it is downloaded and no vocabulary is set; Whisper does everything else.
 
-Only the transcript text goes to Claude, and only if you picked Claude or ChatGPT. For a call, wear headphones when you record the microphone and the system audio together, otherwise the speakers are heard twice.
+Only the transcript text goes to Claude, and only if you picked Claude, ChatGPT or Grok. For a call, wear headphones when you record the microphone and the system audio together, otherwise the speakers are heard twice.
 
 ## Privacy
 
 - Your notes live in the folder you pick, as plain files. There is no hidden database to lose.
-- No account and no telemetry. NøteCraft never connects to the internet on its own. The only network uses are the AI engine you choose (Ollama on your Mac stays local; Claude sends the text you submit to Anthropic and ChatGPT to OpenAI, and the app says so) and, if you ask for it, the one-time download of a speech model (Whisper or Parakeet).
-- Your API keys (Claude, OpenAI) are kept in the macOS Keychain, never in your notes.
+- No account and no telemetry. NøteCraft never connects to the internet on its own. The only network uses are the AI engine you choose (Ollama on your Mac stays local; Claude sends the text you submit to Anthropic, ChatGPT to OpenAI and Grok to xAI, and the app says so) and, if you ask for it, the one-time download of a speech model (Whisper or Parakeet).
+- Your API keys (Claude, OpenAI, Grok) are kept in the macOS Keychain, never in your notes.
 - Backups and the search index are stored outside your notes folder, so syncing never carries them around.
 
 ## Keyboard shortcuts
@@ -110,7 +110,7 @@ The full list is also in **Settings, Shortcuts**.
 
 ## Settings
 
-**Settings** (⌘,) has sections for General (language, appearance and a "Where your files are" overview with Show in Finder, Switch and Move), Data (backups and restore points), Security (private pages), AI, Connected assistants (add NøteCraft to Claude Desktop or Claude Code), Shortcuts and About.
+**Settings** (⌘,) opens on the main page: language, appearance, the AI engine and model, backups and meeting settings. Further pages cover Data (where your files are, with Show in Finder, Switch and Move), Security (private pages), MCP server (add NøteCraft to Claude Desktop or Claude Code), Shortcuts and About. Backups and restore points are under the Backups row.
 
 ## Everyday comfort
 
