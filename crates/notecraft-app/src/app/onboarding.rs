@@ -42,7 +42,7 @@ impl NcApp {
         ui.vertical_centered(|ui| {
             ui.add_space((ui.available_height() * 0.12).max(24.0));
             ui.set_max_width(560.0);
-            ui.label(RichText::new("◧").size(44.0).color(pal.text));
+            super::chrome::app_icon(ui, 84.0);
             ui.add_space(6.0);
             // progress dots
             ui.label(
@@ -64,7 +64,7 @@ impl NcApp {
                         line(ui, self.t(k));
                     }
                     ui.add_space(6.0);
-                    if widgets::text_link(ui, &pal, self.t("demo_watch")).clicked() {
+                    if ui.add(egui::Button::new(RichText::new(format!("▶  {}", self.t("demo_watch"))).size(14.0)).min_size(Vec2::new(340.0, 34.0))).clicked() {
                         let _ = crate::demo::open(self.prefs.lang);
                     }
                     ui.add_space(10.0);

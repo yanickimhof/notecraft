@@ -606,7 +606,7 @@ impl NcApp {
         let pal = self.pal;
         ui.vertical_centered(|ui| {
             ui.add_space((ui.available_height() * 0.22).max(40.0));
-            ui.label(RichText::new("◧").size(54.0).color(pal.text));
+            app_icon(ui, 96.0);
             ui.add_space(10.0);
             ui.label(RichText::new(self.t("welcome_title")).size(28.0).color(pal.text));
             ui.add_space(4.0);
@@ -627,10 +627,11 @@ impl NcApp {
             }
             ui.label(RichText::new(self.t("welcome_create_hint")).size(12.0).color(pal.text_faint));
             ui.add_space(12.0);
-            if widgets::text_link(ui, &pal, self.t("demo_watch")).clicked() {
+            if ui.add(egui::Button::new(RichText::new(format!("▶  {}", self.t("demo_watch"))).size(14.0)).min_size(Vec2::new(340.0, 34.0))).clicked() {
                 let _ = crate::demo::open(self.prefs.lang);
             }
-            ui.add_space(8.0);
+            ui.label(RichText::new(self.t("demo_hint")).size(12.0).color(pal.text_faint));
+            ui.add_space(14.0);
             if ui.add(big(self.t("welcome_other"))).clicked() {
                 self.pick_workspace();
             }
@@ -752,4 +753,13 @@ impl NcApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
+}
+
+/// The NøteCraft icon, shown on the welcome screens.
+pub(super) fn app_icon(ui: &mut egui::Ui, size: f32) {
+    ui.add(
+        egui::Image::from_bytes("bytes://notecraft-icon.png", &include_bytes!("../../assets/demo/icon.png")[..])
+            .fit_to_exact_size(Vec2::splat(size))
+            .corner_radius(size * 0.22),
+    );
 }
