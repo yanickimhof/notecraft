@@ -53,8 +53,7 @@ pub struct Store {
 
 impl Store {
     fn path() -> PathBuf {
-        let base = notecraft_core::sync::index_base_dir();
-        base.parent().map(|p| p.to_path_buf()).unwrap_or(base).join("publications.json")
+        notecraft_core::publications::store_path()
     }
 
     pub fn load() -> Self {

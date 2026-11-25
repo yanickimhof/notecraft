@@ -46,6 +46,7 @@ pub mod log;
 pub mod page;
 pub mod page_options;
 pub mod pdf;
+pub mod publications;
 pub mod publish_html;
 pub mod reminder;
 pub mod render;

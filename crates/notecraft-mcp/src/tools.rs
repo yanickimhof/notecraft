@@ -1133,6 +1133,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
         "trash_page" => {
             let doc = find_any(ws, need(args, "page")?)?;
             let title = ws.title(&doc);
+            ensure_not_published(ws, std::slice::from_ref(&doc))?;
             ws.trash_doc(&doc)?;
             Ok(format!("Moved \"{title}\" to the trash."))
         }
@@ -1152,6 +1153,8 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
                 return fail("set confirm: true to delete the trash for good");
             }
             let n = ws.trash().len();
+            let trashed: Vec<DocId> = ws.trash().into_iter().map(|(d, _)| d).collect();
+            ensure_not_published(ws, &trashed)?;
             ws.empty_trash()?;
             Ok(format!("Deleted {n} item(s) for good."))
         }
@@ -1457,4 +1460,26 @@ fn notes_suffix(notes: &[String]) -> String {
     } else {
         format!(" Notes: {}", notes.join("; "))
     }
+}
+
+/// Refuse to remove a page that is still published on the web: only a person can unpublish it,
+/// from the app, and the page may only go once its link is down.
+fn ensure_not_published(ws: &Workspace, docs: &[DocId]) -> Result<(), ToolError> {
+    let mut ids = std::collections::HashSet::new();
+    for d in docs {
+        ids.insert(d.id().to_string());
+        for x in ws.descendants(d) {
+            ids.insert(x.id().to_string());
+        }
+    }
+    let roots = notecraft_core::publications::live_roots(&ws.root.display().to_string(), &ids);
+    if roots.is_empty() {
+        return Ok(());
+    }
+    let names: Vec<String> =
+        roots.iter().map(|r| ws.pages.get(r).map(|p| p.meta.title.clone()).unwrap_or_else(|| r.clone())).collect();
+    Err(ToolError::Failed(format!(
+        "still published on the web: {}. Ask the user to unpublish it in NoteCraft first (page menu, Unpublish).",
+        names.join(", ")
+    )))
 }

@@ -24,7 +24,7 @@ mod system;
 mod tabs;
 mod webpub;
 pub use system::*;
-pub use webpub::{PubAct, SubdomainDlg};
+pub use webpub::{GuardAction, PubAct, PubGuard, SubdomainDlg};
 /// A page, database or template that exists and is not in the trash, nor under something that is.
 /// It is the only kind a tab or the open page may show: a trashed page must close, not stay on screen.
 pub(crate) fn target_is_live(ws: &Workspace, t: &Target) -> bool {
@@ -234,6 +234,8 @@ pub struct NcApp {
     /// The page to publish again once the web address name is set.
     pub pub_retry: Option<(String, bool)>,
     pub subdomain: Option<SubdomainDlg>,
+    /// Asked when a removal would leave a page live on the web.
+    pub pub_guard: Option<PubGuard>,
     pub meeting: crate::meeting::MeetingState,
     pub show_other_version: bool,
 }
@@ -315,6 +317,7 @@ impl NcApp {
             publishing: None,
             pub_retry: None,
             subdomain: None,
+            pub_guard: None,
             meeting: crate::meeting::MeetingState::default(),
             show_other_version: false,
         };
@@ -926,6 +929,14 @@ impl NcApp {
     }
 
     pub fn trash_doc(&mut self, doc: &DocId) {
+        // a page still live on the web goes to the trash only once unpublished
+        if self.guard_live(GuardAction::Trash(doc.clone())) {
+            return;
+        }
+        self.do_trash(doc);
+    }
+
+    pub(super) fn do_trash(&mut self, doc: &DocId) {
         self.flush_save();
         if let Some(ws) = self.ws.as_mut() {
             if let Err(e) = ws.trash_doc(doc) {
@@ -1045,6 +1056,7 @@ impl eframe::App for NcApp {
         self.poll_import(&ctx);
         self.poll_publish(&ctx);
         self.subdomain_window(&ctx);
+        self.pub_guard_window(&ctx);
         self.demo_window(&ctx);
         self.handle_dropped_files(&ctx);
 

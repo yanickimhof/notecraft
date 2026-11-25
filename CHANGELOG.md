@@ -11,6 +11,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - Actions on several selected lines at once: turn into, colour, group, move, delete.
 - Columns by dragging a line beside another.
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish.
+- A published page cannot be trashed, archived or deleted until it is unpublished: NøteCraft asks first and takes the link down, and Claude (MCP) is refused while a page is live.
 - A tour page, Discover NøteCraft, opens in every new workspace and shows all the features.
 - A four step assistant at first launch: welcome and language (taken from macOS), folder, AI and meetings, with an optional speech model download. Nothing is downloaded without a click.
 - Images can be resized (drag a corner handle) and aligned left, centre or right; size and place are kept on the published page.

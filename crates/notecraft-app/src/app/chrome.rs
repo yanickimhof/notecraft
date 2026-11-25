@@ -398,14 +398,9 @@ impl NcApp {
                     }
                 }
                 if let (true, DocId::Page(id)) = (archive, &doc) {
-                    self.flush_save();
-                    let res = self.ws.as_mut().map(|w| w.set_archived(id, true));
-                    if let Some(Err(e)) = res {
-                        self.notify(e.to_string());
+                    if !self.guard_live(GuardAction::Archive(id.clone())) {
+                        self.do_archive(id);
                     }
-                    self.validate_current();
-                    let msg = self.t("archived_done").to_string();
-                    self.notify(msg);
                 }
                 if let Some(f) = export_as {
                     self.export_page_format(&doc, f);
@@ -568,6 +563,15 @@ impl NcApp {
                 });
             });
         });
+        // pages still live on the web are not deleted for good before being unpublished
+        if let Some(d) = delete.clone() {
+            if self.guard_live(GuardAction::DeleteForever(d)) {
+                delete = None;
+            }
+        }
+        if empty && self.guard_live(GuardAction::EmptyTrash) {
+            empty = false;
+        }
         if let Some(ws) = self.ws.as_mut() {
             let r = if let Some(d) = &restore {
                 ws.restore(d)

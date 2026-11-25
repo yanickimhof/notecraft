@@ -16,6 +16,24 @@ pub enum PubAct {
     Unpublish,
 }
 
+/// What was about to happen to a page that is still live on the web.
+#[derive(Debug, Clone)]
+pub enum GuardAction {
+    Trash(DocId),
+    Archive(String),
+    DeleteForever(DocId),
+    EmptyTrash,
+}
+
+/// The question asked before such a removal: unpublish first, or leave everything as it is.
+pub struct PubGuard {
+    pub action: GuardAction,
+    /// Root pages of the publications that must come down first.
+    pub roots: Vec<String>,
+    pub busy: bool,
+    pub error: String,
+}
+
 /// The first-time question: the name in the web address (`notecraft-pub.<name>.workers.dev`).
 pub struct SubdomainDlg {
     pub account: String,
@@ -104,16 +122,19 @@ impl NcApp {
         self.notify(m);
     }
 
-    pub fn pub_unpublish(&mut self, id: &str) {
+    /// Start taking a publication down. True when the job started.
+    pub fn pub_unpublish(&mut self, id: &str) -> bool {
         if self.publishing.is_some() {
             let m = self.t("pub_busy").to_string();
-            return self.notify(m);
+            self.notify(m);
+            return false;
         }
         let Some(token) = keychain::load_item(keychain::PUBLISH_TOKEN_ACCOUNT) else {
             let m = self.t("pub_need_token").to_string();
-            return self.notify(m);
+            self.notify(m);
+            return false;
         };
-        let Some(entry) = self.pubs.get(&self.ws_key(), id).cloned() else { return };
+        let Some(entry) = self.pubs.get(&self.ws_key(), id).cloned() else { return false };
         let cached = self.pubs.setup.clone();
         let root = id.to_string();
         let (tx, rx) = std::sync::mpsc::channel();
@@ -124,6 +145,7 @@ impl NcApp {
         self.pub_retry = None;
         let m = self.t("pub_removing").to_string();
         self.notify(m);
+        true
     }
 
     /// Run what the "Publish" menu asked for.
@@ -148,7 +170,9 @@ impl NcApp {
                     open_external(&e.url);
                 }
             }
-            PubAct::Unpublish => self.pub_unpublish(id),
+            PubAct::Unpublish => {
+                self.pub_unpublish(id);
+            }
         }
     }
 
@@ -180,6 +204,7 @@ impl NcApp {
                 self.pubs.save();
                 let m = self.t("pub_removed").to_string();
                 self.notify(m);
+                self.guard_continue();
             }
             Msg::NeedSubdomain { account } => {
                 self.subdomain =
@@ -192,7 +217,11 @@ impl NcApp {
                 }
             }
             Msg::Failed(e) => {
-                if let Some(d) = self.subdomain.as_mut() {
+                if let Some(g) = self.pub_guard.as_mut().filter(|g| g.busy) {
+                    // the page stays as it is: nothing is removed while its link may still work
+                    g.busy = false;
+                    g.error = e;
+                } else if let Some(d) = self.subdomain.as_mut() {
                     d.busy = false;
                     d.error = e;
                 } else {
@@ -200,6 +229,159 @@ impl NcApp {
                 }
             }
         }
+    }
+
+    /// Root pages of the live publications that contain any of these documents.
+    fn live_roots_for(&self, docs: &[DocId]) -> Vec<String> {
+        let Some(ws) = self.ws.as_ref() else { return Vec::new() };
+        let mut ids = std::collections::HashSet::new();
+        for d in docs {
+            ids.insert(d.id().to_string());
+            for x in ws.descendants(d) {
+                ids.insert(x.id().to_string());
+            }
+        }
+        let Some(sites) = self.pubs.sites.get(&self.ws_key()) else { return Vec::new() };
+        sites
+            .iter()
+            .filter(|(root, e)| ids.contains(*root) || e.pages.iter().any(|(p, _)| ids.contains(p)))
+            .map(|(root, _)| root.clone())
+            .collect()
+    }
+
+    /// True (and the question is opened) when the action would leave a page live on the web.
+    pub fn guard_live(&mut self, action: GuardAction) -> bool {
+        let docs: Vec<DocId> = match &action {
+            GuardAction::Trash(d) | GuardAction::DeleteForever(d) => vec![d.clone()],
+            GuardAction::Archive(id) => vec![DocId::Page(id.clone())],
+            GuardAction::EmptyTrash => {
+                self.ws.as_ref().map(|w| w.trash().into_iter().map(|(d, _)| d).collect()).unwrap_or_default()
+            }
+        };
+        let roots = self.live_roots_for(&docs);
+        if roots.is_empty() {
+            return false;
+        }
+        self.pub_guard = Some(PubGuard { action, roots, busy: false, error: String::new() });
+        true
+    }
+
+    pub(super) fn do_archive(&mut self, id: &str) {
+        self.flush_save();
+        let res = self.ws.as_mut().map(|w| w.set_archived(id, true));
+        if let Some(Err(e)) = res {
+            self.notify(e.to_string());
+        }
+        self.validate_current();
+        let msg = self.t("archived_done").to_string();
+        self.notify(msg);
+    }
+
+    fn run_guarded(&mut self, action: GuardAction) {
+        match action {
+            GuardAction::Trash(d) => self.do_trash(&d),
+            GuardAction::Archive(id) => self.do_archive(&id),
+            GuardAction::DeleteForever(d) => {
+                if let Some(Err(e)) = self.ws.as_mut().map(|w| w.delete_forever(&d)) {
+                    self.notify(e.to_string());
+                }
+            }
+            GuardAction::EmptyTrash => {
+                if let Some(Err(e)) = self.ws.as_mut().map(|w| w.empty_trash()) {
+                    self.notify(e.to_string());
+                }
+            }
+        }
+    }
+
+    /// A publication just came down: take the next one down, or do what was asked.
+    fn guard_continue(&mut self) {
+        let Some(mut g) = self.pub_guard.take() else { return };
+        if !g.busy {
+            self.pub_guard = Some(g);
+            return;
+        }
+        let key = self.ws_key();
+        g.roots.retain(|r| self.pubs.get(&key, r).is_some());
+        if let Some(root) = g.roots.first().cloned() {
+            if !self.pub_unpublish(&root) {
+                g.busy = false;
+                g.error = self.t("pubg_cannot").to_string();
+            }
+            self.pub_guard = Some(g);
+            return;
+        }
+        self.run_guarded(g.action);
+    }
+
+    /// The question itself: unpublish and go on, or cancel and leave everything as it is.
+    pub fn pub_guard_window(&mut self, ctx: &egui::Context) {
+        let Some(mut g) = self.pub_guard.take() else { return };
+        let pal = self.pal;
+        let lang = self.prefs.lang;
+        let (text, ok) = match g.action {
+            GuardAction::Trash(_) => ("pubg_text_trash", "pubg_ok_trash"),
+            GuardAction::Archive(_) => ("pubg_text_archive", "pubg_ok_archive"),
+            GuardAction::DeleteForever(_) | GuardAction::EmptyTrash => ("pubg_text_delete", "pubg_ok_delete"),
+        };
+        let titles: Vec<String> = g
+            .roots
+            .iter()
+            .map(|r| {
+                self.ws.as_ref().and_then(|w| w.pages.get(r)).map(|p| p.meta.title.clone()).unwrap_or_else(|| r.clone())
+            })
+            .collect();
+        let (mut go, mut cancel) = (false, false);
+        egui::Window::new(tr(lang, "pubg_title"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.set_width(380.0);
+                ui.label(RichText::new(tr(lang, text)).size(13.0).color(pal.text_secondary));
+                ui.add_space(6.0);
+                for t in &titles {
+                    ui.label(RichText::new(t).size(13.0));
+                }
+                if !g.error.is_empty() {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(&g.error).size(12.0).color(pal.danger));
+                }
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.add_enabled(!g.busy, egui::Button::new(tr(lang, ok))).clicked() {
+                        go = true;
+                    }
+                    if ui.add_enabled(!g.busy, egui::Button::new(tr(lang, "cancel"))).clicked() {
+                        cancel = true;
+                    }
+                    if g.busy {
+                        ui.spinner();
+                    }
+                });
+            });
+        if cancel {
+            return;
+        }
+        if go && self.publishing.is_none() {
+            let key = self.ws_key();
+            g.roots.retain(|r| self.pubs.get(&key, r).is_some());
+            match g.roots.first().cloned() {
+                Some(root) => {
+                    if self.pub_unpublish(&root) {
+                        g.busy = true;
+                        g.error.clear();
+                    } else {
+                        g.error = self.t("pubg_cannot").to_string();
+                    }
+                }
+                None => {
+                    self.run_guarded(g.action);
+                    return;
+                }
+            }
+        }
+        self.pub_guard = Some(g);
     }
 
     /// The question asked once: the name of the web address.

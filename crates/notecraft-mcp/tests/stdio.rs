@@ -111,3 +111,26 @@ fn read_only_over_stdio() {
     assert!(err && msg.contains("read-only"));
     assert!(ws.join("pages/hello.md").exists());
 }
+
+/// A page that is still live on the web cannot be trashed through the server, and goes to the
+/// trash normally once the record no longer lists it.
+#[test]
+fn published_page_is_not_trashed() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = dir.path().join("Notes");
+    std::fs::create_dir_all(ws.join("pages")).unwrap();
+    std::fs::write(ws.join("pages/hello.md"), "---\nid: h1\ntitle: Hello\n---\n\nworld\n").unwrap();
+    let record = dir.path().join("publications.json");
+    let live = json!({"sites": {ws.display().to_string(): {"h1": {"pages": [["h1", "t"]]}}}});
+    std::fs::write(&record, live.to_string()).unwrap();
+    let mut c = Client::start(&ws, &dir.path().join("indexes"), &["--allow-delete"]);
+    c.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}}));
+    let (err, msg) = c.tool("trash_page", json!({"page": "Hello"}));
+    assert!(err && msg.contains("published") && msg.contains("Unpublish"), "{msg}");
+    assert!(ws.join("pages/hello.md").exists());
+    let (err, _) = c.tool("empty_trash", json!({"confirm": true}));
+    assert!(!err);
+    std::fs::write(&record, json!({"sites": {}}).to_string()).unwrap();
+    let (err, msg) = c.tool("trash_page", json!({"page": "Hello"}));
+    assert!(!err, "{msg}");
+}
