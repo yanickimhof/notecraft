@@ -11,6 +11,11 @@ pub struct Present {
     pub blocks: Vec<Block>,
     pub slides: Vec<std::ops::Range<usize>>,
     pub at: usize,
+    /// Per slide shrink factor so that a long slide fits the screen (found while drawing).
+    pub fit: Vec<f32>,
+    /// Zoom chosen with + / - / 0 or Cmd+scroll.
+    pub zoom: f32,
+    pub title: String,
 }
 
 fn job(text: &str, size: f32, color: Color32, pal: &Palette, wrap: f32, bold: bool) -> LayoutJob {
@@ -57,14 +62,26 @@ impl NcApp {
     pub fn start_presentation(&mut self, ctx: &egui::Context) {
         self.flush_save();
         let Some(crate::app::Target::Doc(doc)) = self.current.clone() else { return };
+        // A page is presented the way it is published: the same rendering, opened full width in the
+        // browser, where scrolling, zoom (Cmd +/-) and full screen come for free.
+        if self.shot.is_none() {
+            if let notecraft_core::DocId::Page(id) = &doc {
+            let id = id.clone();
+            self.pub_preview(&id);
+            return;
+            }
+        }
         let Some(ws) = &self.ws else { return };
         let Some(blocks) = ws.blocks(&doc).cloned() else { return };
         if blocks.is_empty() {
             self.notify(self.t("present_empty").to_string());
             return;
         }
-        let slides = blocks::slides(&blocks);
-        self.present = Some(Present { blocks, slides, at: 0 });
+        // the whole page is shown at once and scrolls; no cutting into slides
+        let title = ws.title(&doc);
+        let slides = vec![0..blocks.len()];
+        let fit = vec![1.0; slides.len()];
+        self.present = Some(Present { blocks, slides, at: 0, fit, zoom: 1.0, title });
         if self.shot.is_none() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
         }
@@ -95,6 +112,20 @@ impl NcApp {
                 i.key_pressed(Key::Escape) || i.key_pressed(Key::Q),
             )
         });
+        let zoom_delta = ctx.input(|i| {
+            let mut d = 0.0;
+            if i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals) {
+                d += 0.1;
+            }
+            if i.key_pressed(Key::Minus) {
+                d -= 0.1;
+            }
+            if i.modifiers.command {
+                d += i.smooth_scroll_delta.y / 600.0;
+            }
+            d
+        });
+        let zoom_reset = ctx.input(|i| i.key_pressed(Key::Num0));
         let root = self.ws.as_ref().map(|w| w.root.clone()).unwrap_or_default();
         let Some(p) = self.present.as_mut() else { return };
         let n = p.slides.len();
@@ -110,44 +141,103 @@ impl NcApp {
         if last {
             p.at = n - 1;
         }
+        if zoom_reset {
+            p.zoom = 1.0;
+        }
+        p.zoom = (p.zoom + zoom_delta).clamp(0.5, 3.0);
+        let zoom = p.zoom;
+        let title = p.title.clone();
+        let heads: Vec<(u8, String)> = p
+            .blocks
+            .iter()
+            .filter_map(|b| match b.kind {
+                BlockKind::Heading(l) => Some((l, b.text.clone())),
+                _ => None,
+            })
+            .collect();
         let range = p.slides[p.at].clone();
         let blocks: Vec<Block> = p.blocks[range].iter().filter(|b| b.kind != BlockKind::Divider).cloned().collect();
         let at = p.at;
-        let mut clicked_next = false;
+        let _ = (at, &p.fit);
+        let new_fit: Option<f32> = None;
+        let clicked_next = false;
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(pal.bg)).show(ui, |ui| {
             let rect = ui.max_rect();
-            let scale = (rect.height() / 800.0).clamp(0.8, 2.5);
+            let scale = (rect.height() / 1100.0).clamp(0.7, 1.4) * zoom;
             let width = (rect.width() * 0.78).min(1400.0 * scale);
             let side = ((rect.width() - width) / 2.0).max(0.0);
             let resp = ui.interact(rect, ui.scope_id().with("slide"), egui::Sense::click());
-            if resp.clicked() {
-                clicked_next = true;
-            }
-            ui.add_space(rect.height() * 0.1);
+            ui.add_space(rect.height() * 0.05);
+            let top = ui.cursor().min.y;
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.add_space(side);
                 ui.vertical(|ui| {
                     ui.set_width(width);
+                    if !title.is_empty() {
+                        ui.label(job(&title, 56.0 * scale, pal.text, &pal, width, true));
+                        ui.add_space(20.0 * scale);
+                    }
+                    let mut i = 0;
                     let mut num = 0;
-                    for b in &blocks {
+                    while i < blocks.len() {
+                        let b = &blocks[i];
+                        if matches!(b.kind, BlockKind::ColumnsStart) {
+                            // side by side: gather the columns up to the closing marker
+                            let mut cols: Vec<Vec<&Block>> = vec![Vec::new()];
+                            i += 1;
+                            while i < blocks.len() && !matches!(blocks[i].kind, BlockKind::ColumnsEnd) {
+                                if matches!(blocks[i].kind, BlockKind::ColumnBreak) {
+                                    cols.push(Vec::new());
+                                } else if let Some(c) = cols.last_mut() {
+                                    c.push(&blocks[i]);
+                                }
+                                i += 1;
+                            }
+                            i += 1;
+                            let n = cols.len().max(1);
+                            let cw = (width - 24.0 * scale * (n as f32 - 1.0)) / n as f32;
+                            ui.columns(n, |uis| {
+                                for (cui, items) in uis.iter_mut().zip(&cols) {
+                                    cui.set_width(cw);
+                                    let mut k = 0;
+                                    for cb in items {
+                                        k = if matches!(cb.kind, BlockKind::Numbered) { k + 1 } else { 0 };
+                                        draw_block(cui, cb, k, &pal, scale, cw, &root, &heads);
+                                    }
+                                }
+                            });
+                            continue;
+                        }
                         if matches!(b.kind, BlockKind::Numbered) {
                             num += 1;
                         } else {
                             num = 0;
                         }
-                        draw_block(ui, b, num, &pal, scale, width, &root);
+                        draw_block(ui, b, num, &pal, scale, width, &root, &heads);
+                        i += 1;
                     }
                 });
             });
+            ui.add_space(rect.height() * 0.3);
+            });
+            let _ = top;
+            let _ = &resp;
             // position, bottom right
             ui.painter().text(
                 rect.right_bottom() - egui::vec2(24.0, 20.0),
                 egui::Align2::RIGHT_BOTTOM,
-                format!("{} / {}", at + 1, n),
+                format!("{}%", (zoom * 100.0).round()),
                 FontId::proportional(14.0 * scale),
                 pal.text_faint,
             );
         });
+        if let Some(f) = new_fit {
+            if let Some(p) = self.present.as_mut() {
+                p.fit[at] = f;
+            }
+            ctx.request_repaint();
+        }
         if clicked_next {
             if let Some(p) = self.present.as_mut() {
                 if p.at + 1 < p.slides.len() {
@@ -162,14 +252,14 @@ impl NcApp {
     }
 }
 
-fn draw_block(ui: &mut egui::Ui, b: &Block, num: usize, pal: &Palette, scale: f32, width: f32, root: &std::path::Path) {
-    let body = 28.0 * scale;
+fn draw_block(ui: &mut egui::Ui, b: &Block, num: usize, pal: &Palette, scale: f32, width: f32, root: &std::path::Path, heads: &[(u8, String)]) {
+    let body = 24.0 * scale;
     match &b.kind {
         BlockKind::Heading(l) => {
             let size = match l {
-                1 => 60.0,
-                2 => 46.0,
-                _ => 36.0,
+                1 => 48.0,
+                2 => 38.0,
+                _ => 30.0,
             } * scale;
             ui.label(job(&b.text, size, pal.text, pal, width, true));
             ui.add_space(size * 0.3);
@@ -233,9 +323,13 @@ fn draw_block(ui: &mut egui::Ui, b: &Block, num: usize, pal: &Palette, scale: f3
         BlockKind::Image { path } => {
             let abs = root.join(path);
             if abs.is_file() {
-                ui.add(
-                    egui::Image::new(format!("file://{}", abs.display())).max_width(width).max_height(480.0 * scale),
-                );
+                let w = if (10..100).contains(&b.width) { width * f32::from(b.width) / 100.0 } else { width };
+                let mut img = egui::Image::new(format!("file://{}", abs.display())).corner_radius(8.0);
+                if let Some((iw, ih)) = crate::editor::image_dims(&abs) {
+                    let k = (w / iw as f32).min(640.0 * scale / ih as f32).min(1.0);
+                    img = img.fit_to_exact_size(egui::vec2(iw as f32 * k, ih as f32 * k));
+                }
+                ui.add(img);
             }
             if !b.text.is_empty() {
                 ui.label(RichText::new(&b.text).size(body * 0.6).color(pal.text_secondary));
@@ -270,6 +364,24 @@ fn draw_block(ui: &mut egui::Ui, b: &Block, num: usize, pal: &Palette, scale: f3
         }
         BlockKind::Bookmark { url } => {
             ui.label(RichText::new(format!("{}  {}", b.text, url)).size(body * 0.7).color(pal.mention));
+        }
+        BlockKind::Toc => {
+            for (l, t) in heads {
+                ui.horizontal(|ui| {
+                    ui.add_space((f32::from(*l) - 1.0) * 24.0 * scale);
+                    ui.label(RichText::new(notecraft_core::inline::strip(t)).size(body * 0.85).color(pal.text_secondary));
+                });
+            }
+            ui.add_space(body * 0.4);
+        }
+        BlockKind::Database | BlockKind::Meeting => {
+            ui.label(RichText::new(format!("▦  {}", b.text)).size(body).color(pal.text_secondary));
+            ui.add_space(body * 0.4);
+        }
+        BlockKind::File { path } => {
+            let name = if b.text.is_empty() { path.as_str() } else { b.text.as_str() };
+            ui.label(RichText::new(format!("📎  {name}")).size(body * 0.9).color(pal.mention));
+            ui.add_space(body * 0.4);
         }
         _ => {}
     }

@@ -296,7 +296,14 @@ pub fn build(
         };
         let link = |t: &str| if preview { None } else { titles.get(t).cloned() };
         let db = |_: &str| None;
-        let mut hooks = Hooks { image: &mut image, link: &link, database: &db };
+        let diagram = |kind: &str, src: &str| -> Option<String> {
+            if kind == "equation" {
+                crate::svg_export::equation(src)
+            } else {
+                crate::svg_export::diagram(src)
+            }
+        };
+        let mut hooks = Hooks { image: &mut image, link: &link, database: &db, diagram: &diagram };
         let html = render_page(&opts, &p.blocks, &mut hooks).into_bytes();
         pages.push((n.id.clone(), p.meta.updated.clone()));
         let key = if n.slug.is_empty() { format!("{secret}/index.html") } else { format!("{secret}/{}/index.html", n.slug) };

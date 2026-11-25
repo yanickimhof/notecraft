@@ -9,10 +9,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - Actions on several selected lines at once: turn into, colour, group, move, delete.
 - Columns by dragging a line beside another.
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish.
+- Images can be resized (drag a corner handle) and aligned left, centre or right; size and place are kept on the published page.
+- Mermaid diagrams and equations appear as pictures on published pages and in the preview.
 
 ### Changed
 - Interface refinements.
 - Simpler page menu: Export, Protection, Appearance and Arrange are submenus.
+- Presentation opens the page in the browser with the same rendering as the published page, with scrolling, zoom and a full screen button.
 
 ### Fixed
 - Various bug fixes.

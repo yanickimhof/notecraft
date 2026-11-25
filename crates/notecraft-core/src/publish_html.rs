@@ -52,6 +52,8 @@ pub struct Hooks<'a> {
     pub link: &'a dyn Fn(&str) -> Option<String>,
     /// The grid of a database block (first row is the header), if it can be shown.
     pub database: &'a dyn Fn(&str) -> Option<Vec<Vec<String>>>,
+    /// A picture (SVG) for a diagram: kind is `mermaid` or `equation`, then the source.
+    pub diagram: &'a dyn Fn(&str, &str) -> Option<String>,
 }
 
 const COVERS: [(&str, &str); 8] = [
@@ -278,6 +280,10 @@ impl R<'_, '_> {
                     self.text(&b.text)
                 )
             }
+            BlockKind::Code { lang } if lang == "mermaid" && (self.hooks.diagram)("mermaid", &b.text).is_some() => {
+                let svg = (self.hooks.diagram)("mermaid", &b.text).unwrap_or_default();
+                format!("<figure class=\"diagram\">{svg}</figure>\n")
+            }
             BlockKind::Code { lang } => {
                 let l = if lang.is_empty() { String::new() } else { format!("<span class=\"lang\">{}</span>", escape(lang)) };
                 format!("<div class=\"code\">{l}<pre><code>{}</code></pre></div>\n", escape(&b.text))
@@ -296,6 +302,7 @@ impl R<'_, '_> {
                 s.push_str("</nav>\n");
                 s
             }
+            BlockKind::Meeting if b.text.trim().is_empty() && kids_html.trim().is_empty() => String::new(),
             BlockKind::Meeting => format!("<h3 class=\"meeting\"><span>🎙</span> {}</h3>\n{kids_html}", escape(&b.text)),
             BlockKind::Database => {
                 let title = format!("<h3 class=\"dbt\">{}</h3>\n", escape(&b.text));
@@ -316,7 +323,10 @@ impl R<'_, '_> {
                     None => format!("<p>{}</p>\n", escape(label)),
                 }
             }
-            BlockKind::Equation => format!("<div class=\"eq\">{}</div>\n", escape(&b.text)),
+            BlockKind::Equation => match (self.hooks.diagram)("equation", &b.text) {
+                Some(svg) => format!("<div class=\"eq svg\">{svg}</div>\n"),
+                None => format!("<div class=\"eq\">{}</div>\n", escape(&b.text)),
+            },
             BlockKind::Image { path } => {
                 let caption = plain_text(&b.text);
                 let src = if path.starts_with("http://") || path.starts_with("https://") {
@@ -326,9 +336,24 @@ impl R<'_, '_> {
                 };
                 match src {
                     Some(src) => {
+                        let mut css = String::new();
+                        if (10..100).contains(&b.width) {
+                            css.push_str(&format!("width:{}%;", b.width));
+                        }
+                        match b.align {
+                            1 => css.push_str("margin-left:0;margin-right:auto;"),
+                            2 => css.push_str("margin-left:auto;margin-right:0;"),
+                            _ => {}
+                        }
+                        let class = match b.align {
+                            1 => " class=\"al-l\"",
+                            2 => " class=\"al-r\"",
+                            _ => "",
+                        };
+                        let style = if css.is_empty() { class.to_string() } else { format!("{class} style=\"{css}\"") };
                         let cap = if caption.is_empty() { String::new() } else { format!("<figcaption>{}</figcaption>", escape(&caption)) };
                         format!(
-                            "<figure><img src=\"{}\" alt=\"{}\" loading=\"lazy\">{cap}</figure>\n",
+                            "<figure{style}><img src=\"{}\" alt=\"{}\" loading=\"lazy\">{cap}</figure>\n",
                             escape(&src),
                             escape(&caption)
                         )
@@ -424,7 +449,7 @@ ul,ol{{margin:.1em 0;padding-left:1.6em}}li{{padding:2px 0}}ul.todo{{list-style:
 .kids{{margin-left:1.5em}}details{{margin:.15em 0}}summary{{cursor:pointer;padding:3px 2px}}details>.kids{{margin-left:1.2em}}\n\
 .callout{{display:flex;gap:.7em;border-radius:6px;padding:1em 1em 1em .9em;margin:.5em 0;background:var(--callout)}}.callout.plain{{border:1px solid var(--border);background:transparent}}.ci{{font-size:1.25em;line-height:1.3}}.cb{{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}}\n\
 hr{{border:none;border-top:1px solid var(--border);margin:.8em 0}}\n\
-figure{{margin:.7em 0}}figure img{{max-width:100%;height:auto;border-radius:4px;display:block;margin:0 auto}}figcaption{{color:var(--text2);font-size:.85em;margin-top:.4em;text-align:center}}\n\
+figure{{margin:.7em auto}}figure.diagram{{text-align:center;overflow-x:auto}}svg.nc-diagram,svg.nc-equation{{max-width:100%;height:auto}}.eq.svg{{text-align:center;margin:.6em 0;overflow-x:auto}}figure img{{max-width:100%;height:auto;border-radius:4px;display:block;margin:0 auto}}figure.al-l img{{margin:0}}figure.al-r img{{margin:0 0 0 auto}}figcaption{{color:var(--text2);font-size:.85em;margin-top:.4em;text-align:center}}\n\
 .cols{{display:flex;gap:2em;margin:.3em 0}}.col{{flex:1 1 0;min-width:0}}@media (max-width:640px){{.cols{{flex-direction:column;gap:0}}}}\n\
 .tw{{overflow-x:auto;margin:.5em 0}}table{{border-collapse:collapse;width:100%;font-size:.95em}}th,td{{border:1px solid var(--border);padding:.45em .7em;text-align:left;vertical-align:top}}th{{background:var(--hover);font-weight:600}}\n\
 .bookmark{{display:block;border:1px solid var(--border);border-radius:6px;padding:.7em 1em;margin:.5em 0;text-decoration:none}}.bookmark:hover{{background:var(--hover)}}.bookmark strong{{display:block}}.bookmark span{{display:block;color:var(--text2);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}\n\
@@ -554,7 +579,7 @@ mod tests {
         let mut img = |p: &str| Some(format!("a/{}", p.rsplit('/').next().unwrap_or(p)));
         let link = |t: &str| (t == "Other").then(|| "/tok/other/".to_string());
         let db = |_: &str| None;
-        let mut hooks = Hooks { image: &mut img, link: &link, database: &db };
+        let mut hooks = Hooks { image: &mut img, link: &link, database: &db, diagram: &|_, _| None };
         render_page(&opts(), blocks, &mut hooks)
     }
 

@@ -144,6 +144,11 @@ pub struct Block {
     /// Text colour (`red`) or background colour (`bg-red`) of the whole block; empty for none.
     /// Saved as a trailing `<!--c:red-->` comment, which other Markdown tools ignore.
     pub color: String,
+    /// Width of an image as a percentage of its column (10 to 99); 0 for the natural size.
+    /// Saved as a trailing `<!--w:50-->` comment, which other Markdown tools ignore.
+    pub width: u16,
+    /// Where an image sits in its column: 0 centre, 1 left, 2 right. Saved in the same comment as the width.
+    pub align: u8,
 }
 
 /// Colour names a block can take; each also exists with a `bg-` prefix for the background.
@@ -182,7 +187,7 @@ pub fn merge_color(current: &str, pick: &str, bg: bool) -> String {
 
 impl Block {
     pub fn new(kind: BlockKind, text: impl Into<String>) -> Self {
-        Block { id: next_block_id(), kind, text: text.into(), depth: 0, color: String::new() }
+        Block { id: next_block_id(), kind, text: text.into(), depth: 0, color: String::new(), width: 0, align: 0 }
     }
     pub fn paragraph(text: impl Into<String>) -> Self {
         Self::new(BlockKind::Paragraph, text)
@@ -507,6 +512,26 @@ fn strip_list_number(s: &str) -> Option<&str> {
 }
 
 /// Parse `![alt](path)` or `[text](path)` filling the whole line.
+/// `whole_line_link` that also reads a trailing `<!--w:50-->` or `<!--w:50:l-->` (width and place of an image).
+fn whole_line_link_width(s: &str) -> Option<(bool, String, String, u16, u8)> {
+    let t = s.trim_end();
+    if let Some(at) = t.rfind("<!--w:") {
+        if let Some(spec) = t[at + 6..].strip_suffix("-->") {
+            let (w, a) = spec.split_once(':').unwrap_or((spec, ""));
+            if let Ok(n) = w.parse::<u16>() {
+                let width = if n == 0 { 0 } else { n.clamp(10, 99) };
+                let align = match a {
+                    "l" => 1,
+                    "r" => 2,
+                    _ => 0,
+                };
+                return whole_line_link(t[..at].trim_end()).map(|(x, y, z)| (x, y, z, width, align));
+            }
+        }
+    }
+    whole_line_link(s).map(|(a, b, c)| (a, b, c, 0, 0))
+}
+
 fn whole_line_link(s: &str) -> Option<(bool, String, String)> {
     let (is_img, rest) = match s.strip_prefix("![") {
         Some(r) => (true, r),
@@ -799,9 +824,12 @@ pub fn parse_markdown(body: &str) -> Vec<Block> {
             }
             para_open = false;
             continue;
-        } else if let Some((is_img, text, url)) = whole_line_link(trimmed) {
+        } else if let Some((is_img, text, url, width, align)) = whole_line_link_width(trimmed) {
             if is_img {
-                Some(Block::new(BlockKind::Image { path: url }, text))
+                let mut img = Block::new(BlockKind::Image { path: url }, text);
+                img.width = width;
+                img.align = align;
+                Some(img)
             } else if text.starts_with("📎") || (is_local_path(&url) && url.starts_with("assets/")) {
                 let name = text.trim_start_matches("📎").trim().to_string();
                 Some(Block::new(BlockKind::File { path: url }, name))
@@ -967,7 +995,19 @@ pub fn to_markdown(blocks: &[Block]) -> String {
             BlockKind::ColumnBreak => out.push_str(&format!("{indent}<!--column-->\n")),
             BlockKind::ColumnsEnd => out.push_str(&format!("{indent}<!--/columns-->\n")),
             BlockKind::Image { path } => {
-                out.push_str(&format!("{indent}![{}]({})\n", b.text.replace(['[', ']'], ""), link_target(path)))
+                let a = match b.align {
+                    1 => ":l",
+                    2 => ":r",
+                    _ => "",
+                };
+                let w = if (10..100).contains(&b.width) {
+                    format!("<!--w:{}{a}-->", b.width)
+                } else if !a.is_empty() {
+                    format!("<!--w:0{a}-->")
+                } else {
+                    String::new()
+                };
+                out.push_str(&format!("{indent}![{}]({}){w}\n", b.text.replace(['[', ']'], ""), link_target(path)))
             }
             BlockKind::File { path } => {
                 out.push_str(&format!("{indent}[📎 {}]({})\n", b.text.replace(['[', ']'], ""), link_target(path)))
@@ -1265,6 +1305,24 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn image_width_round_trips() {
+        let mut b = Block::new(BlockKind::Image { path: "assets/a.png".into() }, "cap");
+        b.width = 40;
+        let md = to_markdown(&[b]);
+        assert!(md.contains("![cap](assets/a.png)<!--w:40-->"), "{md}");
+        let back = from_markdown(&md);
+        assert_eq!(back[0].width, 40);
+        assert_eq!(back[0].kind, BlockKind::Image { path: "assets/a.png".into() });
+        assert_eq!(from_markdown("![x](assets/a.png)\n")[0].width, 0);
+        let mut c = Block::new(BlockKind::Image { path: "assets/a.png".into() }, "");
+        c.align = 2;
+        let md = to_markdown(&[c]);
+        assert!(md.contains("<!--w:0:r-->"), "{md}");
+        let back = from_markdown(&md);
+        assert_eq!((back[0].width, back[0].align), (0, 2));
+    }
 
     fn kinds(bs: &[Block]) -> Vec<&'static str> {
         bs.iter().map(|b| b.kind.key()).collect()

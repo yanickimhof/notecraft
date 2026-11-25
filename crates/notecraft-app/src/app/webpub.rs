@@ -48,7 +48,10 @@ impl NcApp {
                 let _ = std::fs::create_dir_all(&dir);
                 let safe: String = id.chars().filter(char::is_ascii_alphanumeric).collect();
                 let path = dir.join(format!("{safe}.html"));
-                match std::fs::write(&path, html) {
+                // Only in the local preview: a button and the F key switch the page to full screen.
+                const FULL: &str = "<button id=\"nc-full\" title=\"F\" style=\"position:fixed;right:14px;top:12px;z-index:9;padding:6px 12px;border:1px solid #8884;border-radius:8px;background:#fff8;color:inherit;font:13px system-ui;cursor:pointer;backdrop-filter:blur(6px)\">⛶</button><script>(function(){var b=document.getElementById('nc-full');function t(){if(document.fullscreenElement){document.exitFullscreen()}else{document.documentElement.requestFullscreen()}}b.onclick=t;document.addEventListener('keydown',function(e){if((e.key==='f'||e.key==='F')&&!e.metaKey&&!e.ctrlKey){t()}});document.addEventListener('fullscreenchange',function(){b.style.display=document.fullscreenElement?'none':''})})()</script>";
+                let page = String::from_utf8_lossy(html).replacen("</body>", &format!("{FULL}</body>"), 1);
+                match std::fs::write(&path, page.as_bytes()) {
                     Ok(()) => open_external(&path.display().to_string()),
                     Err(e) => self.notify_error("preview", &e),
                 }

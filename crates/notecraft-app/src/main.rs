@@ -23,6 +23,7 @@ mod mermaid_more;
 mod pageview;
 mod publish;
 mod present;
+mod svg_export;
 mod remind;
 mod settings;
 mod sidebar;

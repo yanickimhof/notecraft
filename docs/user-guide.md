@@ -16,13 +16,14 @@ A workspace is a folder you choose. Each page is a Markdown file inside it, so y
 
 - Pages inside pages, shown as a tree you can drag around.
 - Headings, lists, to-dos, toggles, quotes, callouts, code, dividers, images and files. Type `/` to add anything, or use the usual Markdown shortcuts.
+- Images can be resized by dragging the round handle on a corner (double click it to go back to the natural size) and aligned left, centre or right from the right-click menu. The size and place are saved in the Markdown file as a small comment, and kept on the published page.
 - Bold, italic, underline, strikethrough, code, links and colours (also on part of a text).
 - Columns (drag a line to the right edge of another to make one), a table of contents, simple tables, web bookmarks and whole databases shown inside a page.
 - Select several lines (⇧↓ or drag the handles) and act on all of them at once: turn into, colour, group in a section, copy, cut, duplicate, move, delete. A text colour and a background colour can be combined.
 - Link pages with `[[Page name]]`; the other page shows a backlink.
 - Icons, covers, favourites, trash with restore.
 - **Tabs**: ⌘T opens a tab, ⌘-click on a page opens it in a new tab, ⌘W closes it. Tabs come back when you restart.
-- **Presentation**: ⌥⌘P shows the page as full screen slides, cut at dividers or headings. Equations and diagrams are drawn.
+- **Presentation**: ⌥⌘P opens the page in your browser exactly as it looks when published, full width. Scroll, zoom with ⌘+ and ⌘−, and press F (or the button at the top right) for full screen. Nothing is sent anywhere.
 - **Reminders**: use the page menu (•••) to set a reminder on a page. The Reminders entry in the sidebar lists them all. A reminder fires while the app is open, or the next time you open it.
 
 ## Study and visualise
@@ -58,7 +59,7 @@ Quick finder with ⌘P and full text search across everything.
 
 - **Publish** a page, or a page with its sub pages, from the page menu (⋯, then Publish). It goes to a private link that cannot be guessed, on your own free Cloudflare account. Nothing is sent until you choose Publish, and **Preview** shows the page in your browser first.
 - **Update** sends the new version to the same link (visitors see it within a minute), and **Unpublish** takes the page down (the link stops working within a minute). A dot after "Publish" tells you the page is published.
-- The published page looks like the page on screen: light and dark mode, covers, columns, callouts, tables and images. Links between published pages work; links to pages you did not publish stay plain text. Encrypted pages are never published.
+- The published page looks like the page on screen: light and dark mode, covers, columns, callouts, tables, images, Mermaid diagrams and equations (drawn as pictures, no script). Links between published pages work; links to pages you did not publish stay plain text. Encrypted pages are never published.
 - Set it up once in Settings, under Publishing: paste a Cloudflare API token with Edit access to Workers Scripts and Workers KV Storage. The rest is created for you.
 
 ## Work with AI (optional)

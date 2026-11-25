@@ -119,7 +119,7 @@ The list lives in `SHORTCUTS` (`crates/notecraft-app/src/app/mod.rs`), is shown 
 ## Tabs, presentation, reminders and workspaces
 
 - **Tabs** are per window and restored at launch (stored with the app preferences); back and forward history is shared.
-- **Presentation** (`present.rs`) cuts the page into slides at dividers or headings; equations and Mermaid diagrams are drawn natively, other diagrams stay as code.
+- **Presentation** (`present.rs`) opens the local preview of the page (the same HTML as the published page, with a full screen button) in the browser. Mermaid diagrams and equations are turned into SVG by `svg_export.rs`, which paints them on an off-screen egui context and writes the shapes as SVG. The built-in slide view (`--panel present:<n>`) remains for screenshots.
 - **Reminders** are stored in the page front matter and checked by the app while it runs (and once at launch for missed ones). The notification goes through `osascript`; the native API needs a signed app.
 - **Workspaces**: recent ones are kept in the app preferences. `Remove from the list` only edits the list. `Move to the Trash` moves the folder to `~/.Trash` after a confirmation, only if it contains `pages/`, and never for the home folder, Desktop, Documents or Downloads (`is_too_broad`).
 
