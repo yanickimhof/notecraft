@@ -316,61 +316,99 @@ impl NcApp {
 
     /// The question itself: unpublish and go on, or keep the page as it is.
     pub fn pub_guard_window(&mut self, ctx: &egui::Context) {
+        use crate::icons::{paint, Icon};
         let Some(mut g) = self.pub_guard.take() else { return };
         let pal = self.pal;
         let lang = self.prefs.lang;
-        let (text, ok) = match g.action {
-            GuardAction::Trash(_) => ("pubg_text_trash", "pubg_ok_trash"),
-            GuardAction::Archive(_) => ("pubg_text_archive", "pubg_ok_archive"),
-            GuardAction::DeleteForever(_) | GuardAction::EmptyTrash => ("pubg_text_delete", "pubg_ok_trash"),
-        };
-        let titles: Vec<String> = g
+        let archive = matches!(g.action, GuardAction::Archive(_));
+        let ok = if archive { "pubg_ok_archive" } else { "pubg_ok_trash" };
+        let mut names: Vec<String> = g
             .roots
             .iter()
             .map(|r| {
                 self.ws.as_ref().and_then(|w| w.pages.get(r)).map(|p| p.meta.title.clone()).unwrap_or_else(|| r.clone())
             })
             .collect();
+        let more = names.len().saturating_sub(1);
+        names.truncate(1);
+        let name = names.pop().unwrap_or_default();
+        let name = if more > 0 { format!("{name} +{more}") } else { name };
         let (mut go, mut cancel) = (false, false);
+        let width = 264.0;
+        let frame = egui::Frame::window(&ctx.global_style())
+            .corner_radius(egui::CornerRadius::same(16))
+            .inner_margin(egui::Margin::same(18));
         egui::Window::new("pub_guard")
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
+            .frame(frame)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
-                ui.set_width(300.0);
-                ui.label(RichText::new(tr(lang, "pubg_title")).size(15.0).strong());
-                ui.add_space(4.0);
-                ui.label(RichText::new(tr(lang, text)).size(13.0).color(pal.text_secondary));
-                ui.add_space(8.0);
-                for t in &titles {
-                    egui::Frame::new()
-                        .fill(pal.code_bg)
-                        .corner_radius(egui::CornerRadius::same(6))
-                        .inner_margin(egui::Margin::symmetric(10, 6))
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.add(egui::Label::new(RichText::new(t).size(13.0).strong()).truncate());
-                        });
-                }
-                if !g.error.is_empty() {
-                    ui.add_space(4.0);
-                    ui.label(RichText::new(&g.error).size(12.0).color(pal.danger));
-                }
-                ui.add_space(12.0);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let main = egui::Button::new(RichText::new(tr(lang, ok)).size(13.0).color(pal.bg))
-                        .fill(pal.text)
-                        .corner_radius(egui::CornerRadius::same(6));
-                    if ui.add_enabled(!g.busy, main).clicked() {
-                        go = true;
-                    }
-                    let keep = egui::Button::new(RichText::new(tr(lang, "pubg_keep")).size(13.0)).frame(false);
-                    if ui.add_enabled(!g.busy, keep).clicked() {
+                ui.set_width(width);
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 12.0;
+                    let (r, _) = ui.allocate_exact_size(egui::vec2(36.0, 36.0), egui::Sense::hover());
+                    ui.painter().circle_filled(r.center(), 18.0, pal.code_bg);
+                    paint(
+                        ui.painter(),
+                        egui::Rect::from_center_size(r.center(), egui::vec2(20.0, 20.0)),
+                        Icon::WebOff,
+                        pal.text,
+                        pal.code_bg,
+                    );
+                    ui.vertical(|ui| {
+                        ui.set_max_width(width - 48.0);
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        ui.label(RichText::new(tr(lang, "pubg_title")).size(14.0).strong());
+                        ui.add(egui::Label::new(RichText::new(&name).size(13.0).color(pal.text_secondary)).truncate());
+                        if !g.error.is_empty() {
+                            ui.label(RichText::new(&g.error).size(12.0).color(pal.danger));
+                        }
+                    });
+                });
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    let unit = (width - 8.0) / 2.6;
+                    let sense = if g.busy { egui::Sense::hover() } else { egui::Sense::click() };
+                    let radius = egui::CornerRadius::same(10);
+
+                    let (r, keep) = ui.allocate_exact_size(egui::vec2(unit, 36.0), sense);
+                    let fill = if keep.hovered() && !g.busy { pal.active } else { pal.code_bg };
+                    ui.painter().rect_filled(r, radius, fill);
+                    ui.painter().text(
+                        r.center(),
+                        egui::Align2::CENTER_CENTER,
+                        tr(lang, "pubg_keep"),
+                        egui::FontId::proportional(13.0),
+                        pal.text,
+                    );
+                    if keep.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         cancel = true;
                     }
-                    if g.busy {
-                        ui.spinner();
+
+                    let (r, main) = ui.allocate_exact_size(egui::vec2(unit * 1.6, 36.0), sense);
+                    let fill = if main.hovered() && !g.busy { pal.text.gamma_multiply(0.85) } else { pal.text };
+                    ui.painter().rect_filled(r, radius, fill);
+                    let ink = if g.busy { pal.bg.gamma_multiply(0.6) } else { pal.bg };
+                    let galley =
+                        ui.painter().layout_no_wrap(tr(lang, ok).to_string(), egui::FontId::proportional(13.0), ink);
+                    let icon_w = if archive { 0.0 } else { 23.0 };
+                    let mut x = r.center().x - (icon_w + galley.size().x) / 2.0;
+                    if !archive {
+                        paint(
+                            ui.painter(),
+                            egui::Rect::from_center_size(egui::pos2(x + 8.0, r.center().y), egui::vec2(16.0, 16.0)),
+                            Icon::Trash,
+                            ink,
+                            pal.text,
+                        );
+                        x += icon_w;
+                    }
+                    ui.painter().galley(egui::pos2(x, r.center().y - galley.size().y / 2.0), galley, ink);
+                    if main.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                        go = true;
                     }
                 });
             });

@@ -24,6 +24,7 @@ pub enum Icon {
     Plus,
     Table,
     Trash,
+    WebOff,
 }
 
 /// Draw `icon` in one colour inside `rect`; `hole` is the colour behind it (for cut-outs).
@@ -156,6 +157,21 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, w: Color32, hole: Color3
             painter.line_segment([at(0.2, 0.28), at(0.8, 0.28)], stroke);
             painter.add(PathShape::line(vec![at(0.4, 0.28), at(0.4, 0.17), at(0.6, 0.17), at(0.6, 0.28)], stroke));
             painter.add(PathShape::line(vec![at(0.28, 0.34), at(0.33, 0.84), at(0.67, 0.84), at(0.72, 0.34)], stroke));
+        }
+        Icon::WebOff => {
+            // a globe crossed out
+            let c = at(0.5, 0.5);
+            painter.circle_stroke(c, s * 0.34, stroke);
+            painter.line_segment([at(0.16, 0.5), at(0.84, 0.5)], Stroke::new(stroke.width * 0.8, w));
+            let meridian: Vec<Pos2> = (0..=24)
+                .map(|i| {
+                    let a = std::f32::consts::TAU * i as f32 / 24.0;
+                    c + Vec2::new(a.cos() * s * 0.15, a.sin() * s * 0.34)
+                })
+                .collect();
+            painter.add(PathShape::line(meridian, Stroke::new(stroke.width * 0.8, w)));
+            painter.line_segment([at(0.2, 0.84), at(0.82, 0.16)], Stroke::new(stroke.width * 1.5, hole));
+            painter.line_segment([at(0.2, 0.84), at(0.82, 0.16)], stroke);
         }
         Icon::About => {
             // a letter i
