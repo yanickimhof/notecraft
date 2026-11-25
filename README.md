@@ -32,7 +32,7 @@ No account. No tracking. No subscription. Works offline.
 | **AI assistant** | **Dark mode** |
 | ![AI assistant](docs/screenshots/ai.png) | ![Dark mode](docs/screenshots/page-dark.png) |
 
-More views: [table](docs/screenshots/table.png), [calendar](docs/screenshots/calendar.png), [tabs](docs/screenshots/tabs.png), [presentation](docs/screenshots/present.png), [reminders](docs/screenshots/reminder.png).
+More views: [table](docs/screenshots/table.png), [calendar](docs/screenshots/calendar.png), [tabs](docs/screenshots/tabs.png), [demo](docs/screenshots/demo.png), [reminders](docs/screenshots/reminder.png).
 
 ## Get started
 

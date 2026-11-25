@@ -16,7 +16,7 @@ scripts/install-macos.sh [--dmg]                 # install in /Applications, opt
 scripts/screenshots.sh                           # regenerate docs/screenshots (needs a demo workspace)
 ```
 
-App options: `--workspace <folder>`, `--dark`, `--open <title>`, `--view table|board|list|gallery|calendar`, `--panel ai|settings|tabs|remind|present:<slide>`, `--screenshot <file.png>` (saves the window as PNG), `--export-icns <file>`.
+App options: `--workspace <folder>`, `--dark`, `--open <title>`, `--view table|board|list|gallery|calendar`, `--panel ai|settings|tabs|remind|demo:<page>|present:<slide>`, `--screenshot <file.png>` (saves the window as PNG), `--export-icns <file>`.
 
 Checks run by CI (`.github/workflows/ci.yml`): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, the bundle script, `cargo audit` and `cargo deny`.
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Regenerate the pictures in docs/screenshots from a fresh sample workspace.
-# Usage: scripts/screenshots.sh   (needs target/release/notecraft-app, see scripts/bundle-macos.sh)
+# Usage: scripts/screenshots.sh   (needs target/release/notecraft-app, see scripts/bundle-macos.sh). Quit NoteCraft first: a running copy blocks it.
 set -eu
 cd "$(dirname "$0")/.."
 BIN=target/release/notecraft-app
@@ -15,5 +15,5 @@ shot calendar --open Projects --view calendar
 shot ai --open "Getting started" --panel ai
 shot meeting --open "Weekly sync"
 shot tabs --open "Getting started" --panel tabs
-shot present --open "Getting started" --panel present:0
+shot demo --open "Getting started" --panel demo:2
 shot reminder --open "Getting started" --panel remind

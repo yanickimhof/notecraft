@@ -372,6 +372,10 @@ impl NcApp {
                     app.edit_reminder(&id);
                 }
             }
+            Some(p) if p.starts_with("demo") => {
+                app.demo_at = Some(p.strip_prefix("demo:").and_then(|n| n.parse().ok()).unwrap_or(0));
+                app.demo_auto_done = true;
+            }
             Some(p) if p.starts_with("present") => {
                 app.present_at = p.strip_prefix("present:").and_then(|n| n.parse().ok()).unwrap_or(0);
                 app.present_pending = true;
