@@ -72,11 +72,20 @@ pub struct Prefs {
     pub tabs_workspace: Option<PathBuf>,
 }
 
+/// French when the Mac's first preferred language is French, English otherwise.
+fn system_lang() -> Lang {
+    let out = std::process::Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output();
+    match out {
+        Ok(o) if String::from_utf8_lossy(&o.stdout).lines().find(|l| l.contains('"')).is_some_and(|l| l.contains("\"fr")) => Lang::Fr,
+        _ => Lang::En,
+    }
+}
+
 impl Default for Prefs {
     fn default() -> Self {
         Prefs {
             theme: ThemeChoice::System,
-            lang: Lang::En,
+            lang: system_lang(),
             last_workspace: None,
             recent: Vec::new(),
             sidebar_open: true,
@@ -378,6 +387,12 @@ impl NcApp {
             Ok(mut ws) => {
                 if with_sample {
                     if let Err(e) = sample::populate(&mut ws) {
+                        self.notify_error("workspace", &e);
+                    }
+                } else {
+                    // a brand new, empty workspace opens on a tour of everything the app does
+                    let fr = matches!(self.prefs.lang, Lang::Fr);
+                    if let Err(e) = notecraft_core::tour::populate(&mut ws, fr) {
                         self.notify_error("workspace", &e);
                     }
                 }

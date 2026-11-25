@@ -39,7 +39,8 @@ More views: [table](docs/screenshots/table.png), [calendar](docs/screenshots/cal
 1. Download the DMG from the [latest release](../../releases/latest).
 2. Drag **NøteCraft** into **Applications**.
 3. First launch: the app is not signed with an Apple developer certificate yet, so macOS blocks it once. Right-click the app and choose **Open**; if that is not offered, open **System Settings, Privacy & Security** and click **Open Anyway**.
-4. Pick a folder for your notes, or import them from Evernote, Obsidian, Bear, Joplin, Word, HTML or CSV.
+4. Click **Start here**: NøteCraft creates a `NoteCraft` folder in your Documents and opens a tour of everything it can do. Prefer another place? Choose any folder instead, and import your notes from Evernote, Obsidian, Bear, Joplin, Word, HTML or CSV once you are in.
+5. Nothing is downloaded behind your back. Speech models for meeting notes, and AI engines, are offered when you first need them, with their size, and you decide.
 
 ## Learn more
 

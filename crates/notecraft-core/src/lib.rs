@@ -50,6 +50,7 @@ pub mod publish_html;
 pub mod reminder;
 pub mod render;
 pub mod sample;
+pub mod tour;
 pub mod search;
 pub mod second_brain;
 pub mod snapshot;

@@ -607,10 +607,25 @@ impl NcApp {
             ui.add_space(4.0);
             ui.label(RichText::new(self.t("welcome_text")).size(15.0).color(pal.text_secondary));
             ui.add_space(22.0);
-            let big = |t: &str| egui::Button::new(RichText::new(t).size(15.0)).min_size(Vec2::new(300.0, 38.0));
-            if ui.add(big(self.t("open_folder")).fill(pal.accent_soft)).clicked() {
+            ui.add_space(6.0);
+            for k in ["welcome_how1", "welcome_how2", "welcome_how3"] {
+                ui.label(RichText::new(format!("•  {}", self.t(k))).size(13.5).color(pal.text_secondary));
+            }
+            ui.add_space(22.0);
+            let big = |t: &str| egui::Button::new(RichText::new(t).size(15.0)).min_size(Vec2::new(340.0, 40.0));
+            if ui.add(big(self.t("welcome_create")).fill(pal.accent_soft)).clicked() {
+                let docs = std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Documents").join("NoteCraft"));
+                match docs {
+                    Some(d) if std::fs::create_dir_all(&d).is_ok() => self.open_workspace(&d, false),
+                    _ => self.pick_workspace(),
+                }
+            }
+            ui.label(RichText::new(self.t("welcome_create_hint")).size(12.0).color(pal.text_faint));
+            ui.add_space(12.0);
+            if ui.add(big(self.t("welcome_other"))).clicked() {
                 self.pick_workspace();
             }
+            ui.label(RichText::new(self.t("welcome_other_hint")).size(12.0).color(pal.text_faint));
             let recent: Vec<PathBuf> =
                 self.prefs.recent.iter().filter(|p| p.is_dir() && !is_too_broad(p)).cloned().collect();
             let mut forget: Option<PathBuf> = None;
