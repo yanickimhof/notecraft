@@ -69,6 +69,8 @@ pub struct Prefs {
     pub backup_minutes: u32,
     /// The first launch assistant was completed or skipped.
     pub onboarded: bool,
+    /// The person asked not to see the demo window at start up again.
+    pub demo_seen: bool,
     /// Open tabs of the last session (`Target::key`), with the active one and the workspace they belong to.
     pub tabs: Vec<String>,
     pub active_tab: usize,
@@ -99,6 +101,7 @@ impl Default for Prefs {
             meeting: crate::meeting::MeetingPrefs::default(),
             backup_minutes: 1440,
             onboarded: false,
+            demo_seen: false,
             tabs: Vec::new(),
             active_tab: 0,
             tabs_workspace: None,
@@ -167,6 +170,9 @@ pub struct NcApp {
     /// Start the presentation on the first frame, at this slide (screenshots only).
     pub present_pending: bool,
     pub onboard: onboarding::Onboard,
+    /// Page of the demo window when it is open.
+    pub demo_at: Option<usize>,
+    pub demo_auto_done: bool,
     pub present_at: usize,
     /// Fixed scroll offset of the page view (screenshots only).
     pub shot_scroll: Option<f32>,
@@ -263,6 +269,8 @@ impl NcApp {
             present: None,
             present_pending: false,
             onboard: onboarding::Onboard::default(),
+            demo_at: None,
+            demo_auto_done: false,
             present_at: 0,
             shot_scroll: args.scroll,
             reminder_edit: None,
@@ -1025,6 +1033,7 @@ impl eframe::App for NcApp {
         self.poll_import(&ctx);
         self.poll_publish(&ctx);
         self.subdomain_window(&ctx);
+        self.demo_window(&ctx);
         self.handle_dropped_files(&ctx);
 
         if self.present.is_some() {

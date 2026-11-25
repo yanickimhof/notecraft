@@ -65,7 +65,7 @@ impl NcApp {
                     }
                     ui.add_space(6.0);
                     if ui.add(egui::Button::new(RichText::new(format!("▶  {}", self.t("demo_watch"))).size(14.0)).min_size(Vec2::new(340.0, 34.0))).clicked() {
-                        let _ = crate::demo::open(self.prefs.lang);
+                        self.demo_at = Some(0);
                     }
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {

@@ -1142,7 +1142,7 @@ impl NcApp {
         ui.add_space(8.0);
         hint(ui, &pal, tr(lang, "about_credits"));
         if demo {
-            let _ = crate::demo::open(lang);
+            self.demo_at = Some(0);
         }
         if copy {
             let info = self.system_info();
