@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 ## 0.5.0 (2026-11-24)
 
 ### Added
+- A one minute demo (slide show) built into the app, in French or English following the app language: on the welcome screen, in the first launch assistant and in Settings, About.
+- A green dot in the sidebar and "live" in the page menu show which pages are published. It stacks with the lock icon.
 - Grok as a fourth AI engine.
 - Actions on several selected lines at once: turn into, colour, group, move, delete.
 - Columns by dragging a line beside another.

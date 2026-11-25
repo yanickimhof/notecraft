@@ -1117,7 +1117,12 @@ impl NcApp {
         let lang = self.prefs.lang;
         page_title(ui, &pal, "NøteCraft", tr(lang, "about_text"));
         let mut copy = false;
+        let mut demo = false;
         card(ui, &pal, |ui| {
+            setting_row(ui, &pal, tr(lang, "demo_watch"), tr(lang, "demo_hint"), |ui| {
+                demo = ui.button(tr(lang, "demo_watch")).clicked();
+            });
+            row_divider(ui, &pal);
             setting_row(ui, &pal, tr(lang, "version"), "", |ui| {
                 ui.label(
                     RichText::new(format!("{} · {}", notecraft_core::version(), env!("NOTECRAFT_COMMIT")))
@@ -1136,6 +1141,9 @@ impl NcApp {
         });
         ui.add_space(8.0);
         hint(ui, &pal, tr(lang, "about_credits"));
+        if demo {
+            let _ = crate::demo::open(lang);
+        }
         if copy {
             let info = self.system_info();
             ui.ctx().copy_text(info);

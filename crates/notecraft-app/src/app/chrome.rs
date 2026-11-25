@@ -234,10 +234,12 @@ impl NcApp {
                 egui::Popup::menu(&more).id(Id::unique("page-more")).show(|ui| {
                     ui.set_min_width(220.0);
                     if let Some((entry, stale, kids)) = &pub_info {
-                        let label = if entry.is_some() {
-                            format!("{} ●", self.t("publish_menu"))
+                        let label: egui::WidgetText = if entry.is_some() {
+                            RichText::new(format!("{}  ● {}", self.t("publish_menu"), self.t("pub_live")))
+                                .color(Color32::from_rgb(46, 160, 100))
+                                .into()
                         } else {
-                            self.t("publish_menu").to_string()
+                            self.t("publish_menu").into()
                         };
                         ui.menu_button(label, |ui| {
                             if ui.button(self.t("pub_preview")).clicked() {
@@ -625,6 +627,10 @@ impl NcApp {
             }
             ui.label(RichText::new(self.t("welcome_create_hint")).size(12.0).color(pal.text_faint));
             ui.add_space(12.0);
+            if widgets::text_link(ui, &pal, self.t("demo_watch")).clicked() {
+                let _ = crate::demo::open(self.prefs.lang);
+            }
+            ui.add_space(8.0);
             if ui.add(big(self.t("welcome_other"))).clicked() {
                 self.pick_workspace();
             }

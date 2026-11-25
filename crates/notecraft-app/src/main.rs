@@ -9,6 +9,7 @@ mod ai_panel;
 mod app;
 mod backups;
 mod dbview;
+mod demo;
 mod disk;
 mod editor;
 mod finder;

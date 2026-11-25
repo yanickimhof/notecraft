@@ -4,7 +4,7 @@
 use crate::app::{NcApp, Target};
 use crate::i18n::tr;
 use crate::icons::Icon;
-use eframe::egui::{self, Align2, CornerRadius, FontId, Id, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Id, RichText, Sense, Stroke, Ui, Vec2};
 use notecraft_core::database::ViewKind;
 use notecraft_core::workspace::TreeItem;
 use notecraft_core::DocId;
@@ -347,14 +347,27 @@ impl NcApp {
         painter.galley(egui::pos2(text_rect.min.x, rect.center().y - galley.size().y / 2.0), galley, pal.text);
 
         let mut clicked = resp.clicked() && !ar.clicked();
-        if !hovered && self.ws.as_ref().is_some_and(|ws| ws.is_locked(&item.doc)) {
-            ui.painter().text(
-                egui::pos2(rect.max.x - 14.0, rect.center().y),
-                Align2::CENTER_CENTER,
-                "🔒",
-                FontId::proportional(11.0),
-                pal.text_faint,
-            );
+        if !hovered {
+            // Small status icons on the right; they stack, so a page can be live and locked at once.
+            let locked = self.ws.as_ref().is_some_and(|ws| ws.is_locked(&item.doc));
+            let live = match (&item.doc, self.ws.as_ref()) {
+                (DocId::Page(pid), Some(ws)) => self.pubs.get(&ws.root.display().to_string(), pid).is_some(),
+                _ => false,
+            };
+            let mut x = rect.max.x - 14.0;
+            if locked {
+                ui.painter().text(
+                    egui::pos2(x, rect.center().y),
+                    Align2::CENTER_CENTER,
+                    "🔒",
+                    FontId::proportional(11.0),
+                    pal.text_faint,
+                );
+                x -= 16.0;
+            }
+            if live {
+                ui.painter().circle_filled(egui::pos2(x, rect.center().y), 3.5, Color32::from_rgb(46, 160, 100));
+            }
         }
         // hover actions: ⋯ menu and + (add inside)
         if hovered {

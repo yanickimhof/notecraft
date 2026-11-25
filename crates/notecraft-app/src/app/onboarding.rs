@@ -63,6 +63,10 @@ impl NcApp {
                     for k in ["welcome_how1", "welcome_how2", "welcome_how3"] {
                         line(ui, self.t(k));
                     }
+                    ui.add_space(6.0);
+                    if widgets::text_link(ui, &pal, self.t("demo_watch")).clicked() {
+                        let _ = crate::demo::open(self.prefs.lang);
+                    }
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         ui.add_space(ui.available_width() / 2.0 - 90.0);
