@@ -54,6 +54,13 @@ Quick finder with ⌘P and full text search across everything.
 - **Import** from Evernote, Obsidian, Bear, Joplin, Word, HTML, CSV and Markdown (a zip, a file or a folder, recognised automatically). The import runs in the background; skipped items are listed on an "Import report" page.
 - **Export** a page or the whole workspace as Markdown, and a page as PDF, Word or HTML, with its images.
 
+## Publish on the web (optional)
+
+- **Publish** a page, or a page with its sub pages, from the page menu (⋯, then Publish). It goes to a private link that cannot be guessed, on your own free Cloudflare account. Nothing is sent until you choose Publish, and **Preview** shows the page in your browser first.
+- **Update** sends the new version to the same link (visitors see it within a minute), and **Unpublish** takes the page down (the link stops working within a minute). A dot after "Publish" tells you the page is published.
+- The published page looks like the page on screen: light and dark mode, covers, columns, callouts, tables and images. Links between published pages work; links to pages you did not publish stay plain text. Encrypted pages are never published.
+- Set it up once in Settings, under Publishing: paste a Cloudflare API token with Edit access to Workers Scripts and Workers KV Storage. The rest is created for you.
+
 ## Work with AI (optional)
 
 - Summarise, continue, improve or translate text, or ask a question about a page (⌘J).
@@ -74,8 +81,8 @@ Only the transcript text goes to Claude, and only if you picked Claude, ChatGPT 
 ## Privacy
 
 - Your notes live in the folder you pick, as plain files. There is no hidden database to lose.
-- No account and no telemetry. NøteCraft never connects to the internet on its own. The only network uses are the AI engine you choose (Ollama on your Mac stays local; Claude sends the text you submit to Anthropic, ChatGPT to OpenAI and Grok to xAI, and the app says so) and, if you ask for it, the one-time download of a speech model (Whisper or Parakeet).
-- Your API keys (Claude, OpenAI, Grok) are kept in the macOS Keychain, never in your notes.
+- No account and no telemetry. NøteCraft never connects to the internet on its own. The only network uses are publishing a page, when you ask for it, the AI engine you choose (Ollama on your Mac stays local; Claude sends the text you submit to Anthropic, ChatGPT to OpenAI and Grok to xAI, and the app says so) and, if you ask for it, the one-time download of a speech model (Whisper or Parakeet).
+- Your API keys (Claude, OpenAI, Grok) and your Cloudflare token are kept in the macOS Keychain, never in your notes.
 - Backups and the search index are stored outside your notes folder, so syncing never carries them around.
 
 ## Keyboard shortcuts

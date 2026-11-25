@@ -8,9 +8,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - Grok as a fourth AI engine.
 - Actions on several selected lines at once: turn into, colour, group, move, delete.
 - Columns by dragging a line beside another.
+- Publish a page or a section on the web at a private link, with Preview, Update and Unpublish.
 
 ### Changed
 - Interface refinements.
+- Simpler page menu: Export, Protection, Appearance and Arrange are submenus.
 
 ### Fixed
 - Various bug fixes.

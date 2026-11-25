@@ -12,6 +12,7 @@
 
 pub mod keychain;
 pub mod prompts;
+pub mod publish;
 pub mod webpage;
 
 pub use prompts::{build_notes_prompt, build_prompt, AiAction, Prompt, NOTE_TEMPLATES};

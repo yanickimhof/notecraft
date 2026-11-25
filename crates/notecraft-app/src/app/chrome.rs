@@ -220,22 +220,77 @@ impl NcApp {
                     .unwrap_or((false, false));
                 let (own_lock, any_lock) =
                     self.ws.as_ref().map(|w| (w.has_own_lock(&doc), w.is_locked(&doc))).unwrap_or((false, false));
+                let mut pub_act: Option<PubAct> = None;
+                let pub_info = match (&doc, self.ws.as_ref()) {
+                    (DocId::Page(pid), Some(w)) => {
+                        let key = w.root.display().to_string();
+                        let e = self.pubs.get(&key, pid).cloned();
+                        let stale = e.as_ref().is_some_and(|e| crate::publish::is_stale(w, e));
+                        let kids = w.children(Some(pid)).iter().any(|c| matches!(c.doc, DocId::Page(_)));
+                        Some((e, stale, kids))
+                    }
+                    _ => None,
+                };
                 egui::Popup::menu(&more).id(Id::unique("page-more")).show(|ui| {
                     ui.set_min_width(220.0);
-                    if ui.button(self.t("export_markdown")).clicked() {
-                        export = true;
+                    if let Some((entry, stale, kids)) = &pub_info {
+                        let label = if entry.is_some() {
+                            format!("{} ●", self.t("publish_menu"))
+                        } else {
+                            self.t("publish_menu").to_string()
+                        };
+                        ui.menu_button(label, |ui| {
+                            if ui.button(self.t("pub_preview")).clicked() {
+                                pub_act = Some(PubAct::Preview);
+                            }
+                            match entry {
+                                None => {
+                                    if ui.button(self.t("pub_page")).clicked() {
+                                        pub_act = Some(PubAct::Publish(false));
+                                    }
+                                    if *kids && ui.button(self.t("pub_section")).clicked() {
+                                        pub_act = Some(PubAct::Publish(true));
+                                    }
+                                }
+                                Some(_) => {
+                                    ui.separator();
+                                    let update = if *stale {
+                                        format!("{} •", self.t("pub_update"))
+                                    } else {
+                                        self.t("pub_update").to_string()
+                                    };
+                                    if ui.button(update).clicked() {
+                                        pub_act = Some(PubAct::Update);
+                                    }
+                                    if ui.button(self.t("pub_copy")).clicked() {
+                                        pub_act = Some(PubAct::CopyLink);
+                                    }
+                                    if ui.button(self.t("pub_open")).clicked() {
+                                        pub_act = Some(PubAct::Open);
+                                    }
+                                    if ui.button(self.t("pub_unpublish")).clicked() {
+                                        pub_act = Some(PubAct::Unpublish);
+                                    }
+                                }
+                            }
+                        });
                     }
-                    if matches!(doc, DocId::Page(_)) {
-                        for (key, f) in [
-                            ("export_html", notecraft_core::render::Format::Html),
-                            ("export_pdf", notecraft_core::render::Format::Pdf),
-                            ("export_docx", notecraft_core::render::Format::Docx),
-                        ] {
-                            if ui.button(self.t(key)).clicked() {
-                                export_as = Some(f);
+                    ui.menu_button(self.t("export_menu"), |ui| {
+                        if ui.button(self.t("export_markdown")).clicked() {
+                            export = true;
+                        }
+                        if matches!(doc, DocId::Page(_)) {
+                            for (key, f) in [
+                                ("export_html", notecraft_core::render::Format::Html),
+                                ("export_pdf", notecraft_core::render::Format::Pdf),
+                                ("export_docx", notecraft_core::render::Format::Docx),
+                            ] {
+                                if ui.button(self.t(key)).clicked() {
+                                    export_as = Some(f);
+                                }
                             }
                         }
-                    }
+                    });
                     if let DocId::Page(pid) = &doc {
                         let when = self
                             .ws
@@ -257,50 +312,58 @@ impl NcApp {
                     if matches!(doc, DocId::Page(_)) && ui.button(self.t("duplicate")).clicked() {
                         duplicate = true;
                     }
-                    if any_lock && !own_lock {
-                        ui.add_enabled(false, egui::Button::new(self.t("locked_by_parent").to_string()));
-                    } else {
-                        let label = if own_lock { self.t("unlock").to_string() } else { self.t("lock").to_string() };
-                        if ui.button(label).clicked() {
-                            toggle_lock = true;
+                    ui.menu_button(self.t("protect_menu"), |ui| {
+                        if any_lock && !own_lock {
+                            ui.add_enabled(false, egui::Button::new(self.t("locked_by_parent").to_string()));
+                        } else {
+                            let label =
+                                if own_lock { self.t("unlock").to_string() } else { self.t("lock").to_string() };
+                            if ui.button(label).clicked() {
+                                toggle_lock = true;
+                            }
                         }
-                    }
-                    if matches!(doc, DocId::Page(_)) {
-                        let label = if encrypted { "vault_remove" } else { "vault_encrypt_menu" };
-                        if ui.button(self.t(label)).clicked() {
-                            encrypt = Some(!encrypted);
+                        if matches!(doc, DocId::Page(_)) {
+                            let label = if encrypted { "vault_remove" } else { "vault_encrypt_menu" };
+                            if ui.button(self.t(label)).clicked() {
+                                encrypt = Some(!encrypted);
+                            }
                         }
-                    }
-                    if vault_open && ui.button(self.t("vault_lock_now")).clicked() {
-                        lock_vault = true;
-                    }
+                        if vault_open && ui.button(self.t("vault_lock_now")).clicked() {
+                            lock_vault = true;
+                        }
+                    });
                     if let Some((font, small, wide)) = look.clone() {
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            for (key, value) in [("font_default", ""), ("font_serif", "serif"), ("font_mono", "mono")] {
-                                let text = RichText::new(self.t(key)).family(match value {
-                                    "serif" => egui::FontFamily::Name("serif".into()),
-                                    "mono" => egui::FontFamily::Monospace,
-                                    _ => egui::FontFamily::Proportional,
-                                });
-                                if ui.selectable_label(font == value, text).clicked() && font != value {
-                                    look_change = Some((value.to_string(), small, wide));
+                        ui.menu_button(self.t("look_menu"), |ui| {
+                            ui.horizontal(|ui| {
+                                for (key, value) in
+                                    [("font_default", ""), ("font_serif", "serif"), ("font_mono", "mono")]
+                                {
+                                    let text = RichText::new(self.t(key)).family(match value {
+                                        "serif" => egui::FontFamily::Name("serif".into()),
+                                        "mono" => egui::FontFamily::Monospace,
+                                        _ => egui::FontFamily::Proportional,
+                                    });
+                                    if ui.selectable_label(font == value, text).clicked() && font != value {
+                                        look_change = Some((value.to_string(), small, wide));
+                                    }
                                 }
+                            });
+                            if ui.checkbox(&mut { small }, self.t("small_text")).clicked() {
+                                look_change = Some((font.clone(), !small, wide));
+                            }
+                            if ui.checkbox(&mut { wide }, self.t("full_width")).clicked() {
+                                look_change = Some((font.clone(), small, !wide));
                             }
                         });
-                        if ui.checkbox(&mut { small }, self.t("small_text")).clicked() {
-                            look_change = Some((font.clone(), !small, wide));
-                        }
-                        if ui.checkbox(&mut { wide }, self.t("full_width")).clicked() {
-                            look_change = Some((font.clone(), small, !wide));
-                        }
-                        if ui.button(self.t("move_top")).clicked() {
-                            to_top = true;
-                            ui.close();
-                        }
-                        if ui.button(self.t("archive")).clicked() {
-                            archive = true;
-                        }
+                        ui.menu_button(self.t("organise_menu"), |ui| {
+                            if ui.button(self.t("move_top")).clicked() {
+                                to_top = true;
+                                ui.close();
+                            }
+                            if ui.button(self.t("archive")).clicked() {
+                                archive = true;
+                            }
+                        });
                         ui.separator();
                     }
                     if let Some(ws) = &self.ws {
@@ -344,6 +407,10 @@ impl NcApp {
                 }
                 if let Some(f) = export_as {
                     self.export_page_format(&doc, f);
+                }
+                if let (Some(act), DocId::Page(pid)) = (pub_act, &doc) {
+                    let ctx = ui.ctx().clone();
+                    self.pub_act(&ctx, pid, act);
                 }
                 if remind {
                     if let DocId::Page(pid) = &doc {

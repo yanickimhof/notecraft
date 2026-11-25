@@ -27,6 +27,15 @@ pub enum Tab {
     Backups,
 }
 
+/// What is typed (and what is stored, masked) for publishing.
+#[derive(Default)]
+pub struct PublishCfg {
+    pub token_input: String,
+    pub open: bool,
+    /// The stored token, masked; loaded on first use.
+    pub status: Option<String>,
+}
+
 fn page_title(ui: &mut Ui, pal: &crate::theme::Palette, _title: &str, subtitle: &str) {
     if !subtitle.is_empty() {
         hint(ui, pal, subtitle);
@@ -255,6 +264,7 @@ impl NcApp {
             self.settings_tab = Tab::Backups;
         }
         self.ai_row(ui);
+        self.publish_row(ui);
 
         ui.add_space(16.0);
         ui.horizontal(|ui| {
@@ -359,6 +369,87 @@ impl NcApp {
         }
         if mv {
             self.move_workspace();
+        }
+    }
+
+    /// Where a page is published: a Cloudflare account of your own. One line with an icon; the
+    /// account ID and the token sit in a small box under the icon, like the key of an AI service.
+    fn publish_row(&mut self, ui: &mut Ui) {
+        use crate::widgets::{icon_action, srow, text_link, Glyph};
+        let pal = self.pal;
+        let lang = self.prefs.lang;
+        if self.publish_cfg.status.is_none() {
+            let tok = keychain::load_item(keychain::PUBLISH_TOKEN_ACCOUNT).map(|t| keychain::masked(&t)).unwrap_or_default();
+            self.publish_cfg.status = Some(tok);
+        }
+        let tok = self.publish_cfg.status.clone().unwrap_or_default();
+        let ready = !tok.is_empty();
+        let sub = if ready { tr(lang, "publish_sub_ready") } else { tr(lang, "publish_sub_missing") };
+        let mut anchor: Option<egui::Response> = None;
+        let mut toggle_box = false;
+        srow(ui, &pal, tr(lang, "publish_title"), sub, (!ready).then_some(pal.danger), |ui| {
+            let r = icon_action(ui, &pal, Glyph::Cloud, tr(lang, "publish_title"), (!ready).then_some(pal.danger));
+            toggle_box = r.clicked();
+            anchor = Some(r);
+        });
+        if toggle_box {
+            self.publish_cfg.open = !self.publish_cfg.open;
+        }
+        let Some(anchor) = anchor else { return };
+        if !self.publish_cfg.open {
+            return;
+        }
+        let (mut save, mut remove) = (false, false);
+        let mut open = true;
+        egui::Popup::from_response(&anchor)
+            .id(Id::unique("publish-cfg"))
+            .open_bool(&mut open)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_width(260.0);
+                crate::widgets::menu_label(ui, &pal, tr(lang, "publish_token"));
+                ui.add_space(2.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.publish_cfg.token_input)
+                        .password(true)
+                        .desired_width(f32::INFINITY)
+                        .hint_text(if tok.is_empty() { "…".to_string() } else { tok.clone() }),
+                );
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let typed = !self.publish_cfg.token_input.trim().is_empty();
+                    if ui.add_enabled(typed, egui::Button::new(tr(lang, "save_keychain"))).clicked() {
+                        save = true;
+                    }
+                    if !tok.is_empty() && text_link(ui, &pal, tr(lang, "remove_key")).clicked() {
+                        remove = true;
+                    }
+                });
+                ui.add_space(4.0);
+                ui.label(RichText::new(tr(lang, "publish_text")).size(12.0).color(pal.text_faint));
+                ui.hyperlink_to(RichText::new(tr(lang, "publish_get")).size(12.0), "https://dash.cloudflare.com/profile/api-tokens");
+            });
+        self.publish_cfg.open = open;
+        if save {
+            let token = self.publish_cfg.token_input.trim().to_string();
+            let err: Option<String> = if token.is_empty() {
+                None
+            } else {
+                keychain::save_item(keychain::PUBLISH_TOKEN_ACCOUNT, &token).err()
+            };
+            match err {
+                None => {
+                    self.publish_cfg.token_input.clear();
+                    self.publish_cfg.status = None;
+                    self.publish_cfg.open = false;
+                    self.toast = Some((tr(lang, "publish_saved").into(), Instant::now()));
+                }
+                Some(e) => self.toast = Some((e, Instant::now())),
+            }
+        }
+        if remove {
+            let _ = keychain::delete_item(keychain::PUBLISH_TOKEN_ACCOUNT);
+            self.publish_cfg.status = None;
         }
     }
 

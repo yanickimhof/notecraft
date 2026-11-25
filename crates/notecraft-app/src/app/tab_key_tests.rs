@@ -51,3 +51,19 @@ fn a_page_in_the_trash_is_no_longer_a_live_target() {
     assert!(!target_is_live(&ws, &gone));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn an_archived_page_is_no_longer_a_live_target() {
+    let dir = std::env::temp_dir().join(format!("nc-archived-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut ws = Workspace::open(&dir).unwrap();
+    let id = ws.create_page(None, "Old").unwrap();
+    let t = Target::Doc(DocId::Page(id.clone()));
+    assert!(target_is_live(&ws, &t));
+    ws.set_archived(&id, true).unwrap();
+    assert!(!target_is_live(&ws, &t), "an archived page must leave the window");
+    ws.set_archived(&id, false).unwrap();
+    assert!(target_is_live(&ws, &t));
+    let _ = std::fs::remove_dir_all(&dir);
+}

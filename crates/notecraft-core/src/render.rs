@@ -72,7 +72,7 @@ pub(crate) struct Item {
     pub(crate) color: String,
 }
 
-fn runs_of(text: &str) -> Vec<Run> {
+pub(crate) fn runs_of(text: &str) -> Vec<Run> {
     inline::parse(text)
         .into_iter()
         .filter(|s| !s.marker)
@@ -175,7 +175,7 @@ pub(crate) fn items(blocks: &[Block]) -> Vec<Item> {
     out
 }
 
-fn escape(s: &str) -> String {
+pub(crate) fn escape(s: &str) -> String {
     let mut o = String::with_capacity(s.len());
     for c in s.chars() {
         match c {

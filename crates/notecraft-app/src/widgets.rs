@@ -274,6 +274,8 @@ pub enum Glyph {
     /// A circle cut by a slash, after the Grok mark.
     Grok,
     Key,
+    /// A cloud outline (publishing).
+    Cloud,
     Mic,
     Speaker,
     Both,
@@ -367,6 +369,19 @@ fn paint_glyph(p: &egui::Painter, c: egui::Pos2, g: Glyph, color: Color32) {
             p.line_segment([c + Vec2::new(-0.6, 0.0), c + Vec2::new(7.0, 0.0)], stroke);
             p.line_segment([c + Vec2::new(4.0, 0.0), c + Vec2::new(4.0, 3.0)], stroke);
             p.line_segment([c + Vec2::new(7.0, 0.0), c + Vec2::new(7.0, 2.6)], stroke);
+        }
+        Glyph::Cloud => {
+            let mut pts: Vec<egui::Pos2> = Vec::new();
+            let arc = |pts: &mut Vec<egui::Pos2>, ctr: Vec2, r: f32, a0: f32, a1: f32| {
+                for i in 0..=10 {
+                    let a = a0 + (a1 - a0) * i as f32 / 10.0;
+                    pts.push(c + ctr + Vec2::angled(a) * r);
+                }
+            };
+            arc(&mut pts, Vec2::new(-5.0, 1.8), 3.2, PI / 2.0, PI * 1.5);
+            arc(&mut pts, Vec2::new(-0.6, -0.8), 4.6, PI * 1.12, PI * 1.9);
+            arc(&mut pts, Vec2::new(5.0, 1.8), 3.2, -PI / 2.0, PI / 2.0);
+            p.add(egui::epaint::PathShape::closed_line(pts, stroke));
         }
         Glyph::Mic => paint_mic(p, c, 1.0, color),
         Glyph::Speaker => paint_speaker(p, c, 1.0, color),

@@ -21,6 +21,7 @@ mod meeting;
 mod mermaid;
 mod mermaid_more;
 mod pageview;
+mod publish;
 mod present;
 mod remind;
 mod settings;

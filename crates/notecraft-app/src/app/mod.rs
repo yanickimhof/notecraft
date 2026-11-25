@@ -20,13 +20,21 @@ use std::time::Instant;
 
 mod chrome;
 mod system;
+mod webpub;
 mod tabs;
 pub use system::*;
+pub use webpub::{PubAct, SubdomainDlg};
 /// A page, database or template that exists and is not in the trash, nor under something that is.
 /// It is the only kind a tab or the open page may show: a trashed page must close, not stay on screen.
 pub(crate) fn target_is_live(ws: &Workspace, t: &Target) -> bool {
     match t {
-        Target::Doc(d) => ws.is_live(d),
+        // a page that is archived, or sits under an archived one, is not shown in the window
+        Target::Doc(d) => {
+            ws.is_live(d)
+                && !ws.breadcrumbs(d).iter().any(|a| {
+                    matches!(a, DocId::Page(id) if ws.pages.get(id).is_some_and(|p| p.meta.archived))
+                })
+        }
         Target::Template(db, id) => {
             ws.is_live(&DocId::Database(db.clone())) && ws.dbs.get(db).is_some_and(|d| d.templates.contains_key(id))
         }
@@ -191,6 +199,13 @@ pub struct NcApp {
     /// The current document as last read or written (for merging outside edits).
     pub base: Option<(Target, Vec<Block>)>,
     pub ai: crate::ai_panel::AiState,
+    pub publish_cfg: crate::settings::PublishCfg,
+    /// What is published, and where (kept in the app data folder, not in the notes).
+    pub pubs: crate::publish::Store,
+    pub publishing: Option<std::sync::mpsc::Receiver<crate::publish::Msg>>,
+    /// The page to publish again once the web address name is set.
+    pub pub_retry: Option<(String, bool)>,
+    pub subdomain: Option<SubdomainDlg>,
     pub meeting: crate::meeting::MeetingState,
     pub show_other_version: bool,
 }
@@ -264,6 +279,11 @@ impl NcApp {
             watcher: None,
             base: None,
             ai: crate::ai_panel::AiState::default(),
+            publish_cfg: Default::default(),
+            pubs: crate::publish::Store::load(),
+            publishing: None,
+            pub_retry: None,
+            subdomain: None,
             meeting: crate::meeting::MeetingState::default(),
             show_other_version: false,
         };
@@ -471,11 +491,24 @@ impl NcApp {
 
     /// Make sure the current target still exists (after trash/delete).
     pub(crate) fn validate_current(&mut self) {
-        let Some(ws) = &self.ws else { return };
-        let ok = self.current.as_ref().is_none_or(|t| target_is_live(ws, t));
-        if !ok {
-            self.current = ws.children(None).first().map(|t| Target::Doc(t.doc.clone()));
+        let live = |app: &Self| match (&app.ws, &app.current) {
+            (Some(ws), Some(t)) => target_is_live(ws, t),
+            _ => true,
+        };
+        if live(self) {
+            return;
         }
+        // the page of the active tab went away (archived, trashed, deleted): with other tabs open,
+        // that tab closes and the neighbour shows; with a single tab it moves to the first page
+        if self.tabs.len() > 1 {
+            let i = self.active_tab.min(self.tabs.len() - 1);
+            self.close_tab(i);
+            if live(self) {
+                return;
+            }
+        }
+        let Some(ws) = &self.ws else { return };
+        self.current = ws.children(None).first().map(|t| Target::Doc(t.doc.clone()));
     }
 
     // ---------------------------------------------------------------- saving
@@ -969,6 +1002,8 @@ impl eframe::App for NcApp {
         }
         self.poll_reminders(&ctx);
         self.poll_import(&ctx);
+        self.poll_publish(&ctx);
+        self.subdomain_window(&ctx);
         self.handle_dropped_files(&ctx);
 
         if self.present.is_some() {

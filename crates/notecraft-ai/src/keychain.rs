@@ -117,6 +117,65 @@ pub fn delete_key(p: Provider) -> Result<(), String> {
     }
 }
 
+/// Keychain items for publishing a page (a Cloudflare account of the user's own).
+pub const PUBLISH_TOKEN_ACCOUNT: &str = "cloudflare-api-token";
+pub const PUBLISH_ACCOUNT_ID: &str = "cloudflare-account-id";
+
+/// Store one Keychain item under the NoteCraft service (replacing any previous value).
+pub fn save_item(account: &str, value: &str) -> Result<(), String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("the value is empty".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        security_framework::passwords::set_generic_password(SERVICE, account, value.as_bytes())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = account;
+        Err("the Keychain is only available on macOS".into())
+    }
+}
+
+/// One stored Keychain item, if any.
+pub fn load_item(account: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let bytes = security_framework::passwords::get_generic_password(SERVICE, account).ok()?;
+        String::from_utf8(bytes).ok().filter(|s| !s.trim().is_empty())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = account;
+        None
+    }
+}
+
+/// Remove one Keychain item (nothing to remove is fine).
+pub fn delete_item(account: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        match security_framework::passwords::delete_generic_password(SERVICE, account) {
+            Ok(()) => Ok(()),
+            Err(e) if e.code() == -25300 => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = account;
+        Ok(())
+    }
+}
+
+/// A Cloudflare account ID is 32 hexadecimal characters.
+pub fn valid_cloudflare_account_id(s: &str) -> bool {
+    let s = s.trim();
+    s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 /// "sk-ant-…a1b2": enough to recognise a key without showing it.
 pub fn masked(key: &str) -> String {
     let k = key.trim();
@@ -139,6 +198,14 @@ mod tests {
         assert_eq!(masked("short"), "•••••");
         assert!(save_api_key("   ").is_err());
         assert!(save_key(Provider::OpenAi, "  ").is_err());
+    }
+
+    #[test]
+    fn cloudflare_account_ids_are_32_hex_characters() {
+        assert!(valid_cloudflare_account_id("0123456789abcdef0123456789ABCDEF"));
+        assert!(!valid_cloudflare_account_id("0123456789abcdef"));
+        assert!(!valid_cloudflare_account_id("zzzz456789abcdef0123456789abcdef"));
+        assert!(save_item(PUBLISH_TOKEN_ACCOUNT, "  ").is_err());
     }
 
     #[test]
