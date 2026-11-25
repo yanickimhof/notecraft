@@ -192,24 +192,6 @@ pub fn image(name: &str) -> &'static [u8] {
     IMAGES.iter().find(|(n, _)| *n == name).map(|(_, b)| *b).unwrap_or(&[])
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn both_languages_have_the_same_pages_and_known_pictures() {
-        assert_eq!(FR.len(), EN.len());
-        for l in [Lang::Fr, Lang::En] {
-            let p = pages(l);
-            assert_eq!(p.len(), FR.len() + 2);
-            for pg in p {
-                if let Some(i) = pg.image {
-                    assert!(!image(i).is_empty());
-                }
-            }
-        }
-    }
-}
-
 impl crate::app::NcApp {
     /// The demo window: pictures and a few lines per page, with Back, Next, Skip and "Do not show again".
     /// It opens by itself once the workspace is open, until the person asks not to see it again.
@@ -228,7 +210,7 @@ impl crate::app::NcApp {
         let mut never = self.prefs.demo_seen;
         let (back_t, next_t, skip_t, done_t, never_t) =
             (self.t("onb_back"), self.t("onb_next"), self.t("onb_skip"), self.t("onb_finish"), self.t("demo_never"));
-        let modal = egui::Modal::new(egui::Id::new("nc-demo")).show(ctx, |ui| {
+        let modal = egui::Modal::new(egui::Id::unique("nc-demo")).show(ctx, |ui| {
             ui.set_width(720.0);
             let page = &pages[at];
             // Every page has the same height, so Next stays under the pointer: click, click, click.
@@ -303,5 +285,23 @@ impl crate::app::NcApp {
         } else {
             Some(at)
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn both_languages_have_the_same_pages_and_known_pictures() {
+        assert_eq!(FR.len(), EN.len());
+        for l in [Lang::Fr, Lang::En] {
+            let p = pages(l);
+            assert_eq!(p.len(), FR.len() + 2);
+            for pg in p {
+                if let Some(i) = pg.image {
+                    assert!(!image(i).is_empty());
+                }
+            }
+        }
     }
 }

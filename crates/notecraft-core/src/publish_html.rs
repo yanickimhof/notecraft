@@ -647,7 +647,7 @@ mod tests {
 
     #[test]
     fn description_is_short_plain_text() {
-        let d = description(&[Block::new(BlockKind::Paragraph, &"mot ".repeat(80))]);
+        let d = description(&[Block::new(BlockKind::Paragraph, "mot ".repeat(80))]);
         assert!(d.chars().count() <= 161);
         assert!(d.ends_with('…'));
     }

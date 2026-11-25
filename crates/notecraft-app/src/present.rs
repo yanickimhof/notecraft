@@ -79,7 +79,7 @@ impl NcApp {
         }
         // the whole page is shown at once and scrolls; no cutting into slides
         let title = ws.title(&doc);
-        let slides = vec![0..blocks.len()];
+        let slides: Vec<std::ops::Range<usize>> = std::iter::once(0..blocks.len()).collect();
         let fit = vec![1.0; slides.len()];
         self.present = Some(Present { blocks, slides, at: 0, fit, zoom: 1.0, title });
         if self.shot.is_none() {
@@ -252,6 +252,7 @@ impl NcApp {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_block(
     ui: &mut egui::Ui,
     b: &Block,

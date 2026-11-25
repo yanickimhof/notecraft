@@ -605,7 +605,7 @@ impl NcApp {
                     &pal,
                     Glyph::Download,
                     tr(lang, "meeting_download"),
-                    downloading.then(|| faint.unwrap()),
+                    faint.filter(|_| downloading),
                 )
                 .clicked()
                     && !downloading
