@@ -598,6 +598,9 @@ impl NcApp {
     }
 
     pub(super) fn welcome(&mut self, ui: &mut egui::Ui) {
+        if self.onboarding_due() {
+            return self.onboarding(ui);
+        }
         let pal = self.pal;
         ui.vertical_centered(|ui| {
             ui.add_space((ui.available_height() * 0.22).max(40.0));

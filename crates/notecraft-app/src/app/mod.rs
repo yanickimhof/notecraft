@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 mod chrome;
+mod onboarding;
 mod system;
 mod webpub;
 mod tabs;
@@ -66,6 +67,8 @@ pub struct Prefs {
     pub meeting: crate::meeting::MeetingPrefs,
     /// Minutes between automatic backups (0 = off).
     pub backup_minutes: u32,
+    /// The first launch assistant was completed or skipped.
+    pub onboarded: bool,
     /// Open tabs of the last session (`Target::key`), with the active one and the workspace they belong to.
     pub tabs: Vec<String>,
     pub active_tab: usize,
@@ -95,6 +98,7 @@ impl Default for Prefs {
             ai: crate::ai_panel::AiPrefs::default(),
             meeting: crate::meeting::MeetingPrefs::default(),
             backup_minutes: 1440,
+            onboarded: false,
             tabs: Vec::new(),
             active_tab: 0,
             tabs_workspace: None,
@@ -162,6 +166,7 @@ pub struct NcApp {
     pub present: Option<crate::present::Present>,
     /// Start the presentation on the first frame, at this slide (screenshots only).
     pub present_pending: bool,
+    pub onboard: onboarding::Onboard,
     pub present_at: usize,
     /// Fixed scroll offset of the page view (screenshots only).
     pub shot_scroll: Option<f32>,
@@ -257,6 +262,7 @@ impl NcApp {
             tabs: Vec::new(),
             present: None,
             present_pending: false,
+            onboard: onboarding::Onboard::default(),
             present_at: 0,
             shot_scroll: args.scroll,
             reminder_edit: None,

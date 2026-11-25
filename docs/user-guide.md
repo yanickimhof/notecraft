@@ -4,7 +4,7 @@ Everything you can do in NøteCraft, in plain words. For installing, see the [RE
 
 ## First launch
 
-The welcome screen explains in three lines how NøteCraft works, picks your language from macOS, and offers one recommended button that creates a `NoteCraft` folder in Documents. Or you pick another folder. A new, empty workspace opens on **Discover NøteCraft**, a tour page that shows every feature with a live example (columns, tables, images, equations, diagrams, a database with all its views, publishing, AI, meetings, shortcuts). Delete it whenever you like.
+A short assistant in four steps opens the first time: **welcome** (how your notes are stored, and the language, taken from macOS), **folder** (a recommended `NoteCraft` folder in Documents, or any folder you pick), **AI** (what it is for and that nothing is set up now) and **meetings** (an optional button to download the speech model, with its size). "Skip the rest" is always there. A new, empty workspace opens on **Discover NøteCraft**, a tour page that shows every feature with a live example (columns, tables, images, equations, diagrams, a database with all its views, publishing, AI, meetings, shortcuts). Delete it whenever you like.
 
 Nothing is downloaded automatically. When you first press record in a meeting block, NøteCraft says what it needs (the speech model, with its size, one time, then offline) and waits for your click. The AI engines run only when you choose them: Ollama on your Mac, or your own Claude, ChatGPT or Grok key.
 

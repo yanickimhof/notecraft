@@ -10,7 +10,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - Columns by dragging a line beside another.
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish.
 - A tour page, Discover NøteCraft, opens in every new workspace and shows all the features.
-- A clearer welcome screen: one recommended button, the language taken from macOS, and a short explanation of how your notes are stored.
+- A four step assistant at first launch: welcome and language (taken from macOS), folder, AI and meetings, with an optional speech model download. Nothing is downloaded without a click.
 - Images can be resized (drag a corner handle) and aligned left, centre or right; size and place are kept on the published page.
 - Mermaid diagrams and equations appear as pictures on published pages and in the preview.
 

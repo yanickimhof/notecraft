@@ -280,7 +280,7 @@ fn mmss(d: Duration) -> String {
 }
 
 impl NcApp {
-    fn meeting_model(&self) -> &'static WhisperModel {
+    pub(crate) fn meeting_model(&self) -> &'static WhisperModel {
         WhisperModel::by_id(&self.prefs.meeting.model).unwrap_or(&MODELS[1])
     }
 
@@ -404,7 +404,7 @@ impl NcApp {
         }
     }
 
-    fn start_model_download(&mut self) {
+    pub(crate) fn start_model_download(&mut self) {
         if self.meeting.download.is_some() {
             return;
         }
