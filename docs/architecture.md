@@ -7,7 +7,7 @@ NøteCraft is a Cargo workspace. The core has no UI dependency, so the app, the 
 | Crate | Role |
 |---|---|
 | `notecraft-core` | Storage and logic: blocks and Markdown, inline formatting, pages, databases and their query engine, workspace load and save, trash, search index, import and export, sync helpers, file watching, conflict handling |
-| `notecraft-app` | Desktop app (eframe and egui): sidebar, page view, block editor, database views, quick finder, AI panel, settings |
+| `notecraft-app` | Desktop app (eframe and egui): sidebar, page view, block editor, database views, quick finder, AI panel, settings, first launch assistant (`app/onboarding.rs`) and the built in demo window (`demo.rs`) |
 | `notecraft-cli` | `notecraft` command: `reindex`, `search`, `import`, `export`, `bench`, `snapshots`, `restore`, `version` |
 | `notecraft-mcp` | MCP server over stdio, optional `--read-only`, `--allow-delete`, `--scope` |
 | `notecraft-ai` | AI engines (Ollama on the Mac, Claude, OpenAI and Grok APIs), API keys in the macOS Keychain, prompts |
