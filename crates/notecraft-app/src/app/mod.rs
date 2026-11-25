@@ -21,8 +21,8 @@ use std::time::Instant;
 mod chrome;
 mod onboarding;
 mod system;
-mod webpub;
 mod tabs;
+mod webpub;
 pub use system::*;
 pub use webpub::{PubAct, SubdomainDlg};
 /// A page, database or template that exists and is not in the trash, nor under something that is.
@@ -32,9 +32,10 @@ pub(crate) fn target_is_live(ws: &Workspace, t: &Target) -> bool {
         // a page that is archived, or sits under an archived one, is not shown in the window
         Target::Doc(d) => {
             ws.is_live(d)
-                && !ws.breadcrumbs(d).iter().any(|a| {
-                    matches!(a, DocId::Page(id) if ws.pages.get(id).is_some_and(|p| p.meta.archived))
-                })
+                && !ws
+                    .breadcrumbs(d)
+                    .iter()
+                    .any(|a| matches!(a, DocId::Page(id) if ws.pages.get(id).is_some_and(|p| p.meta.archived)))
         }
         Target::Template(db, id) => {
             ws.is_live(&DocId::Database(db.clone())) && ws.dbs.get(db).is_some_and(|d| d.templates.contains_key(id))
@@ -81,7 +82,14 @@ pub struct Prefs {
 fn system_lang() -> Lang {
     let out = std::process::Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output();
     match out {
-        Ok(o) if String::from_utf8_lossy(&o.stdout).lines().find(|l| l.contains('"')).is_some_and(|l| l.contains("\"fr")) => Lang::Fr,
+        Ok(o)
+            if String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .find(|l| l.contains('"'))
+                .is_some_and(|l| l.contains("\"fr")) =>
+        {
+            Lang::Fr
+        }
         _ => Lang::En,
     }
 }

@@ -2231,10 +2231,15 @@ impl EditorState {
                             });
                             // a handle on the corner: drag to resize, double click to go back to the natural size
                             let handle_id = ui.make_persistent_id(("img-size", bid));
-                            let corner = if blocks_align == 2 { resp.rect.left_bottom() + egui::vec2(12.0, -12.0) } else { resp.rect.right_bottom() - egui::vec2(12.0, 12.0) };
+                            let corner = if blocks_align == 2 {
+                                resp.rect.left_bottom() + egui::vec2(12.0, -12.0)
+                            } else {
+                                resp.rect.right_bottom() - egui::vec2(12.0, 12.0)
+                            };
                             let grab = egui::Rect::from_center_size(corner, egui::vec2(18.0, 18.0));
                             let active = ui.ctx().is_being_dragged(handle_id);
-                            if resp.hovered() || self.selected == Some(bid) || active || ui.rect_contains_pointer(grab) {
+                            if resp.hovered() || self.selected == Some(bid) || active || ui.rect_contains_pointer(grab)
+                            {
                                 let h = ui.interact(grab, handle_id, Sense::click_and_drag());
                                 ui.painter().circle(grab.center(), 6.0, Color32::WHITE, Stroke::new(1.5, pal.accent));
                                 let h = h.on_hover_cursor(egui::CursorIcon::ResizeHorizontal);

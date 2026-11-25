@@ -66,9 +66,9 @@ impl NcApp {
         // browser, where scrolling, zoom (Cmd +/-) and full screen come for free.
         if self.shot.is_none() {
             if let notecraft_core::DocId::Page(id) = &doc {
-            let id = id.clone();
-            self.pub_preview(&id);
-            return;
+                let id = id.clone();
+                self.pub_preview(&id);
+                return;
             }
         }
         let Some(ws) = &self.ws else { return };
@@ -170,56 +170,56 @@ impl NcApp {
             ui.add_space(rect.height() * 0.05);
             let top = ui.cursor().min.y;
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add_space(side);
-                ui.vertical(|ui| {
-                    ui.set_width(width);
-                    if !title.is_empty() {
-                        ui.label(job(&title, 56.0 * scale, pal.text, &pal, width, true));
-                        ui.add_space(20.0 * scale);
-                    }
-                    let mut i = 0;
-                    let mut num = 0;
-                    while i < blocks.len() {
-                        let b = &blocks[i];
-                        if matches!(b.kind, BlockKind::ColumnsStart) {
-                            // side by side: gather the columns up to the closing marker
-                            let mut cols: Vec<Vec<&Block>> = vec![Vec::new()];
-                            i += 1;
-                            while i < blocks.len() && !matches!(blocks[i].kind, BlockKind::ColumnsEnd) {
-                                if matches!(blocks[i].kind, BlockKind::ColumnBreak) {
-                                    cols.push(Vec::new());
-                                } else if let Some(c) = cols.last_mut() {
-                                    c.push(&blocks[i]);
+                ui.horizontal(|ui| {
+                    ui.add_space(side);
+                    ui.vertical(|ui| {
+                        ui.set_width(width);
+                        if !title.is_empty() {
+                            ui.label(job(&title, 56.0 * scale, pal.text, &pal, width, true));
+                            ui.add_space(20.0 * scale);
+                        }
+                        let mut i = 0;
+                        let mut num = 0;
+                        while i < blocks.len() {
+                            let b = &blocks[i];
+                            if matches!(b.kind, BlockKind::ColumnsStart) {
+                                // side by side: gather the columns up to the closing marker
+                                let mut cols: Vec<Vec<&Block>> = vec![Vec::new()];
+                                i += 1;
+                                while i < blocks.len() && !matches!(blocks[i].kind, BlockKind::ColumnsEnd) {
+                                    if matches!(blocks[i].kind, BlockKind::ColumnBreak) {
+                                        cols.push(Vec::new());
+                                    } else if let Some(c) = cols.last_mut() {
+                                        c.push(&blocks[i]);
+                                    }
+                                    i += 1;
                                 }
                                 i += 1;
-                            }
-                            i += 1;
-                            let n = cols.len().max(1);
-                            let cw = (width - 24.0 * scale * (n as f32 - 1.0)) / n as f32;
-                            ui.columns(n, |uis| {
-                                for (cui, items) in uis.iter_mut().zip(&cols) {
-                                    cui.set_width(cw);
-                                    let mut k = 0;
-                                    for cb in items {
-                                        k = if matches!(cb.kind, BlockKind::Numbered) { k + 1 } else { 0 };
-                                        draw_block(cui, cb, k, &pal, scale, cw, &root, &heads);
+                                let n = cols.len().max(1);
+                                let cw = (width - 24.0 * scale * (n as f32 - 1.0)) / n as f32;
+                                ui.columns(n, |uis| {
+                                    for (cui, items) in uis.iter_mut().zip(&cols) {
+                                        cui.set_width(cw);
+                                        let mut k = 0;
+                                        for cb in items {
+                                            k = if matches!(cb.kind, BlockKind::Numbered) { k + 1 } else { 0 };
+                                            draw_block(cui, cb, k, &pal, scale, cw, &root, &heads);
+                                        }
                                     }
-                                }
-                            });
-                            continue;
+                                });
+                                continue;
+                            }
+                            if matches!(b.kind, BlockKind::Numbered) {
+                                num += 1;
+                            } else {
+                                num = 0;
+                            }
+                            draw_block(ui, b, num, &pal, scale, width, &root, &heads);
+                            i += 1;
                         }
-                        if matches!(b.kind, BlockKind::Numbered) {
-                            num += 1;
-                        } else {
-                            num = 0;
-                        }
-                        draw_block(ui, b, num, &pal, scale, width, &root, &heads);
-                        i += 1;
-                    }
+                    });
                 });
-            });
-            ui.add_space(rect.height() * 0.3);
+                ui.add_space(rect.height() * 0.3);
             });
             let _ = top;
             let _ = &resp;
@@ -252,7 +252,16 @@ impl NcApp {
     }
 }
 
-fn draw_block(ui: &mut egui::Ui, b: &Block, num: usize, pal: &Palette, scale: f32, width: f32, root: &std::path::Path, heads: &[(u8, String)]) {
+fn draw_block(
+    ui: &mut egui::Ui,
+    b: &Block,
+    num: usize,
+    pal: &Palette,
+    scale: f32,
+    width: f32,
+    root: &std::path::Path,
+    heads: &[(u8, String)],
+) {
     let body = 24.0 * scale;
     match &b.kind {
         BlockKind::Heading(l) => {
@@ -369,7 +378,9 @@ fn draw_block(ui: &mut egui::Ui, b: &Block, num: usize, pal: &Palette, scale: f3
             for (l, t) in heads {
                 ui.horizontal(|ui| {
                     ui.add_space((f32::from(*l) - 1.0) * 24.0 * scale);
-                    ui.label(RichText::new(notecraft_core::inline::strip(t)).size(body * 0.85).color(pal.text_secondary));
+                    ui.label(
+                        RichText::new(notecraft_core::inline::strip(t)).size(body * 0.85).color(pal.text_secondary),
+                    );
                 });
             }
             ui.add_space(body * 0.4);

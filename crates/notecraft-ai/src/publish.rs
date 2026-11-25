@@ -84,14 +84,17 @@ pub fn new_secret() -> String {
         for (i, chunk) in bytes.chunks_mut(8).enumerate() {
             let mut h = std::collections::hash_map::RandomState::new().build_hasher();
             h.write_u64(i as u64);
-            h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+            h.write_u128(
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0),
+            );
             chunk.copy_from_slice(&h.finish().to_le_bytes());
         }
     }
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut o = String::new();
     for c in bytes.chunks(3) {
-        let n = (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
+        let n =
+            (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
         o.push(T[(n >> 18) as usize & 63] as char);
         o.push(T[(n >> 12) as usize & 63] as char);
         if c.len() > 1 {
@@ -120,7 +123,8 @@ impl Cloudflare {
     fn read(mut resp: ureq::http::Response<ureq::Body>) -> Result<(u16, Value), PubError> {
         let status = resp.status().as_u16();
         let body = resp.body_mut().read_to_string().map_err(net)?;
-        let v: Value = serde_json::from_str(&body).unwrap_or_else(|_| json!({ "raw": body.chars().take(200).collect::<String>() }));
+        let v: Value = serde_json::from_str(&body)
+            .unwrap_or_else(|_| json!({ "raw": body.chars().take(200).collect::<String>() }));
         Ok((status, v))
     }
 
@@ -198,7 +202,12 @@ impl Cloudflare {
         let namespace = match found {
             Some(id) => id,
             None => {
-                let v = self.send(false, &format!("{acc}/storage/kv/namespaces"), "application/json", json!({ "title": NAMESPACE }).to_string().as_bytes())?;
+                let v = self.send(
+                    false,
+                    &format!("{acc}/storage/kv/namespaces"),
+                    "application/json",
+                    json!({ "title": NAMESPACE }).to_string().as_bytes(),
+                )?;
                 v["result"]["id"].as_str().ok_or_else(|| PubError::Api("no namespace id".into()))?.to_string()
             }
         };
@@ -219,9 +228,17 @@ impl Cloudflare {
             )
             .as_bytes(),
         );
-        self.send(true, &format!("{acc}/workers/scripts/{WORKER_NAME}"), &format!("multipart/form-data; boundary={b}"), &body)?;
+        self.send(
+            true,
+            &format!("{acc}/workers/scripts/{WORKER_NAME}"),
+            &format!("multipart/form-data; boundary={b}"),
+            &body,
+        )?;
 
-        let sub = self.get(&format!("{acc}/workers/subdomain")).ok().and_then(|v| v["result"]["subdomain"].as_str().map(String::from));
+        let sub = self
+            .get(&format!("{acc}/workers/subdomain"))
+            .ok()
+            .and_then(|v| v["result"]["subdomain"].as_str().map(String::from));
         let Some(sub) = sub.filter(|s| !s.is_empty()) else { return Err(PubError::NeedSubdomain) };
         self.send(
             false,
@@ -237,23 +254,37 @@ impl Cloudflare {
         if !valid_subdomain(name) {
             return Err(PubError::Api("use 3 to 30 lowercase letters, digits or hyphens".into()));
         }
-        self.send(true, &format!("/accounts/{account}/workers/subdomain"), "application/json", json!({ "subdomain": name }).to_string().as_bytes())
-            .map(|_| ())
+        self.send(
+            true,
+            &format!("/accounts/{account}/workers/subdomain"),
+            "application/json",
+            json!({ "subdomain": name }).to_string().as_bytes(),
+        )
+        .map(|_| ())
     }
 
     /// The account to use before `setup` has succeeded (for `set_subdomain`).
     pub fn account_id(&self) -> Result<String, PubError> {
         let v = self.get("/accounts")?;
-        v["result"][0]["id"].as_str().map(String::from).ok_or_else(|| PubError::BadToken("no Cloudflare account found".into()))
+        v["result"][0]["id"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| PubError::BadToken("no Cloudflare account found".into()))
     }
 
     pub fn put(&self, s: &Setup, key: &str, bytes: &[u8]) -> Result<(), PubError> {
-        self.send(true, &format!("/accounts/{}/storage/kv/namespaces/{}/values/{}", s.account, s.namespace, enc(key)), "application/octet-stream", bytes)
-            .map(|_| ())
+        self.send(
+            true,
+            &format!("/accounts/{}/storage/kv/namespaces/{}/values/{}", s.account, s.namespace, enc(key)),
+            "application/octet-stream",
+            bytes,
+        )
+        .map(|_| ())
     }
 
     pub fn remove(&self, s: &Setup, key: &str) -> Result<(), PubError> {
-        self.delete(&format!("/accounts/{}/storage/kv/namespaces/{}/values/{}", s.account, s.namespace, enc(key))).map(|_| ())
+        self.delete(&format!("/accounts/{}/storage/kv/namespaces/{}/values/{}", s.account, s.namespace, enc(key)))
+            .map(|_| ())
     }
 
     /// Keys starting with `prefix` (all pages of a publication).
@@ -264,7 +295,10 @@ impl Cloudflare {
             s.namespace,
             enc(prefix)
         ))?;
-        Ok(v["result"].as_array().map(|a| a.iter().filter_map(|k| k["name"].as_str().map(String::from)).collect()).unwrap_or_default())
+        Ok(v["result"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|k| k["name"].as_str().map(String::from)).collect())
+            .unwrap_or_default())
     }
 }
 

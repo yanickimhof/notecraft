@@ -379,7 +379,8 @@ impl NcApp {
         let pal = self.pal;
         let lang = self.prefs.lang;
         if self.publish_cfg.status.is_none() {
-            let tok = keychain::load_item(keychain::PUBLISH_TOKEN_ACCOUNT).map(|t| keychain::masked(&t)).unwrap_or_default();
+            let tok =
+                keychain::load_item(keychain::PUBLISH_TOKEN_ACCOUNT).map(|t| keychain::masked(&t)).unwrap_or_default();
             self.publish_cfg.status = Some(tok);
         }
         let tok = self.publish_cfg.status.clone().unwrap_or_default();
@@ -427,7 +428,10 @@ impl NcApp {
                 });
                 ui.add_space(4.0);
                 ui.label(RichText::new(tr(lang, "publish_text")).size(12.0).color(pal.text_faint));
-                ui.hyperlink_to(RichText::new(tr(lang, "publish_get")).size(12.0), "https://dash.cloudflare.com/profile/api-tokens");
+                ui.hyperlink_to(
+                    RichText::new(tr(lang, "publish_get")).size(12.0),
+                    "https://dash.cloudflare.com/profile/api-tokens",
+                );
             });
         self.publish_cfg.open = open;
         if save {

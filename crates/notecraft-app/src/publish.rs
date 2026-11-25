@@ -169,7 +169,14 @@ struct Node {
     slug: String,
 }
 
-fn collect(ws: &Workspace, id: &str, parent: Option<&str>, depth: usize, out: &mut Vec<Node>, skipped: &mut Vec<String>) {
+fn collect(
+    ws: &Workspace,
+    id: &str,
+    parent: Option<&str>,
+    depth: usize,
+    out: &mut Vec<Node>,
+    skipped: &mut Vec<String>,
+) {
     if out.len() >= MAX_PAGES || depth > 8 {
         return;
     }
@@ -242,22 +249,23 @@ pub fn build(
             if let Some(v) = memo.get(path) {
                 return v.clone();
             }
-            let res = std::fs::read(ws.asset_path(path)).ok().and_then(|b| prepare_image(path, b)).map(|(bytes, ext)| {
-                if preview {
-                    let mime = match ext {
-                        "png" => "image/png",
-                        "gif" => "image/gif",
-                        "webp" => "image/webp",
-                        "svg" => "image/svg+xml",
-                        _ => "image/jpeg",
-                    };
-                    format!("data:{mime};base64,{}", notecraft_core::render::base64(&bytes))
-                } else {
-                    let name = format!("{}.{ext}", fnv(&bytes));
-                    assets.entry(name.clone()).or_insert(bytes);
-                    format!("/{secret}/a/{name}")
-                }
-            });
+            let res =
+                std::fs::read(ws.asset_path(path)).ok().and_then(|b| prepare_image(path, b)).map(|(bytes, ext)| {
+                    if preview {
+                        let mime = match ext {
+                            "png" => "image/png",
+                            "gif" => "image/gif",
+                            "webp" => "image/webp",
+                            "svg" => "image/svg+xml",
+                            _ => "image/jpeg",
+                        };
+                        format!("data:{mime};base64,{}", notecraft_core::render::base64(&bytes))
+                    } else {
+                        let name = format!("{}.{ext}", fnv(&bytes));
+                        assets.entry(name.clone()).or_insert(bytes);
+                        format!("/{secret}/a/{name}")
+                    }
+                });
             memo.insert(path.to_string(), res.clone());
             res
         };
@@ -306,7 +314,8 @@ pub fn build(
         let mut hooks = Hooks { image: &mut image, link: &link, database: &db, diagram: &diagram };
         let html = render_page(&opts, &p.blocks, &mut hooks).into_bytes();
         pages.push((n.id.clone(), p.meta.updated.clone()));
-        let key = if n.slug.is_empty() { format!("{secret}/index.html") } else { format!("{secret}/{}/index.html", n.slug) };
+        let key =
+            if n.slug.is_empty() { format!("{secret}/index.html") } else { format!("{secret}/{}/index.html", n.slug) };
         if n.slug.is_empty() {
             first = Some((key, html));
         } else {
@@ -384,7 +393,14 @@ fn content_ok(files: &[(String, Vec<u8>)], cf: &Cloudflare, s: &Setup) -> Result
 }
 
 /// Send a publication (new or an update of the same address).
-pub fn run_publish(token: &str, cached: Option<SetupRec>, root: &str, with_children: bool, secret: &str, mut b: Build) -> Msg {
+pub fn run_publish(
+    token: &str,
+    cached: Option<SetupRec>,
+    root: &str,
+    with_children: bool,
+    secret: &str,
+    mut b: Build,
+) -> Msg {
     let cf = Cloudflare::new(token, notecraft_ai::Timeouts::default());
     let (mut setup, from_cache) = match get_setup(&cf, &cached) {
         Ok(v) => v,
@@ -480,7 +496,9 @@ mod tests {
             *p = image::Rgb([200, 30, 30]);
         }
         let mut png = Vec::new();
-        image::DynamicImage::ImageRgb8(img).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
         let (out, ext) = prepare_image("a.png", png).unwrap();
         assert_eq!(ext, "jpg");
         let back = image::load_from_memory(&out).unwrap();
@@ -526,7 +544,10 @@ mod tests {
             _ => panic!("unexpected"),
         };
         let code = |u: &str| {
-            let o = std::process::Command::new("curl").args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", "10", u]).output().unwrap();
+            let o = std::process::Command::new("curl")
+                .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", "10", u])
+                .output()
+                .unwrap();
             String::from_utf8_lossy(&o.stdout).to_string()
         };
         println!("URL {url}");

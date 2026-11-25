@@ -377,7 +377,10 @@ pub fn populate(ws: &mut Workspace, fr: bool) -> Result<()> {
             } else {
                 "Pages nest like folders. This page has a backlink to the discovery page: open the page menu to see it."
             }),
-            Block::new(BlockKind::Bulleted, if fr { "Retour : [[Découvrir NøteCraft]]" } else { "Back: [[Discover NøteCraft]]" }),
+            Block::new(
+                BlockKind::Bulleted,
+                if fr { "Retour : [[Découvrir NøteCraft]]" } else { "Back: [[Discover NøteCraft]]" },
+            ),
         ];
     }
     ws.save_page(&sub)?;
@@ -467,7 +470,9 @@ mod tests {
             populate(&mut ws, fr).unwrap();
             assert_eq!(ws.pages.len(), 2);
             let home = ws.children(None).iter().find_map(|t| match &t.doc {
-                crate::workspace::DocId::Page(id) if ws.pages[id].meta.cover.starts_with("gradient") => Some(id.clone()),
+                crate::workspace::DocId::Page(id) if ws.pages[id].meta.cover.starts_with("gradient") => {
+                    Some(id.clone())
+                }
                 _ => None,
             });
             let home = home.expect("tour page");
@@ -483,8 +488,14 @@ mod tests {
             assert!(has(|k| matches!(k, BlockKind::Toggle { .. })));
             assert!(has(|k| matches!(k, BlockKind::Callout { .. })));
             assert!(has(|k| matches!(k, BlockKind::Code { lang } if lang == "mermaid")));
-            assert!(blocks.iter().any(|b| matches!(&b.kind, BlockKind::Image { path } if ws.root.join(path).is_file())));
-            assert!(!ws.backlinks(&ws.resolve_title(if fr { "Une page dans la page" } else { "A page inside a page" }).unwrap()).is_empty());
+            assert!(blocks
+                .iter()
+                .any(|b| matches!(&b.kind, BlockKind::Image { path } if ws.root.join(path).is_file())));
+            assert!(!ws
+                .backlinks(
+                    &ws.resolve_title(if fr { "Une page dans la page" } else { "A page inside a page" }).unwrap()
+                )
+                .is_empty());
         }
     }
 }

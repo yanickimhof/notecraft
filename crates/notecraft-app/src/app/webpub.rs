@@ -76,11 +76,8 @@ impl NcApp {
         };
         self.flush_save();
         let key = self.ws_key();
-        let secret = self
-            .pubs
-            .get(&key, id)
-            .map(|e| e.secret.clone())
-            .unwrap_or_else(notecraft_ai::publish::new_secret);
+        let secret =
+            self.pubs.get(&key, id).map(|e| e.secret.clone()).unwrap_or_else(notecraft_ai::publish::new_secret);
         let lang = self.lang_code();
         let Some(ws) = &self.ws else { return };
         let built = match publish::build(ws, id, with_children, &secret, lang, false) {
@@ -185,7 +182,8 @@ impl NcApp {
                 self.notify(m);
             }
             Msg::NeedSubdomain { account } => {
-                self.subdomain = Some(SubdomainDlg { account, input: String::new(), error: String::new(), busy: false });
+                self.subdomain =
+                    Some(SubdomainDlg { account, input: String::new(), error: String::new(), busy: false });
             }
             Msg::SubdomainSet => {
                 self.subdomain = None;
@@ -218,15 +216,17 @@ impl NcApp {
                 ui.set_width(340.0);
                 ui.label(RichText::new(tr(lang, "sub_text")).size(13.0).color(pal.text_secondary));
                 ui.add_space(8.0);
-                let r = ui.add(
-                    egui::TextEdit::singleline(&mut dlg.input).desired_width(f32::INFINITY).hint_text("my-name"),
-                );
+                let r = ui
+                    .add(egui::TextEdit::singleline(&mut dlg.input).desired_width(f32::INFINITY).hint_text("my-name"));
                 dlg.input = dlg.input.to_lowercase();
                 let name = dlg.input.trim();
                 ui.label(
-                    RichText::new(format!("https://notecraft-pub.{}.workers.dev", if name.is_empty() { "…" } else { name }))
-                        .size(12.0)
-                        .color(pal.text_faint),
+                    RichText::new(format!(
+                        "https://notecraft-pub.{}.workers.dev",
+                        if name.is_empty() { "…" } else { name }
+                    ))
+                    .size(12.0)
+                    .color(pal.text_faint),
                 );
                 if !dlg.error.is_empty() {
                     ui.add_space(4.0);

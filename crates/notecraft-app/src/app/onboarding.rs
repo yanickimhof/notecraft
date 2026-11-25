@@ -64,7 +64,13 @@ impl NcApp {
                         line(ui, self.t(k));
                     }
                     ui.add_space(6.0);
-                    if ui.add(egui::Button::new(RichText::new(format!("▶  {}", self.t("demo_watch"))).size(14.0)).min_size(Vec2::new(340.0, 34.0))).clicked() {
+                    if ui
+                        .add(
+                            egui::Button::new(RichText::new(format!("▶  {}", self.t("demo_watch"))).size(14.0))
+                                .min_size(Vec2::new(340.0, 34.0)),
+                        )
+                        .clicked()
+                    {
                         self.demo_at = Some(0);
                     }
                     ui.add_space(10.0);
@@ -117,15 +123,23 @@ impl NcApp {
                     line(ui, self.t("onb_meet_2"));
                     ui.add_space(8.0);
                     if let Some((name, frac)) = &view.download {
-                        ui.add(
-                            egui::ProgressBar::new(*frac)
-                                .desired_width(340.0)
-                                .text(format!("{} {name} {:.0}%", self.t("meeting_downloading"), frac * 100.0)),
-                        );
+                        ui.add(egui::ProgressBar::new(*frac).desired_width(340.0).text(format!(
+                            "{} {name} {:.0}%",
+                            self.t("meeting_downloading"),
+                            frac * 100.0
+                        )));
                     } else if view.model_ready {
-                        ui.label(RichText::new(format!("✓ {} {}", view.model_label, self.t("meeting_model_ready"))).color(pal.text));
+                        ui.label(
+                            RichText::new(format!("✓ {} {}", view.model_label, self.t("meeting_model_ready")))
+                                .color(pal.text),
+                        );
                     } else if ui
-                        .add(big(&format!("{} ({}, {} MB)", self.t("onb_meet_download"), view.model_label, view.model_mb)))
+                        .add(big(&format!(
+                            "{} ({}, {} MB)",
+                            self.t("onb_meet_download"),
+                            view.model_label,
+                            view.model_mb
+                        )))
                         .clicked()
                     {
                         download = true;

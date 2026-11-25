@@ -177,7 +177,8 @@ mod tests {
         let e = super::equation("E = mc^2").expect("equation");
         assert!(e.contains("<text"), "{e}");
         if let Ok(dir) = std::env::var("NC_SVG_OUT") {
-            let d2 = super::diagram("graph LR\n  A[Idée] --> B[Note] --> C[Page structurée] --> D[Publication]").unwrap();
+            let d2 =
+                super::diagram("graph LR\n  A[Idée] --> B[Note] --> C[Page structurée] --> D[Publication]").unwrap();
             let e2 = super::equation("\\frac{a}{b} + \\sqrt{x^2}").unwrap();
             let page = format!("<body style=\"background:#fff;color:#2c2c2b;--text:#2c2c2b;--text2:#7d7a75;--bg:#fff;--code:#f4f3f3\">{d2}<br>{e2}<br>{e}</body>");
             std::fs::write(format!("{dir}/svg.html"), page).unwrap();

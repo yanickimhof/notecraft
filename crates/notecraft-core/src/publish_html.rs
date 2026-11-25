@@ -285,7 +285,11 @@ impl R<'_, '_> {
                 format!("<figure class=\"diagram\">{svg}</figure>\n")
             }
             BlockKind::Code { lang } => {
-                let l = if lang.is_empty() { String::new() } else { format!("<span class=\"lang\">{}</span>", escape(lang)) };
+                let l = if lang.is_empty() {
+                    String::new()
+                } else {
+                    format!("<span class=\"lang\">{}</span>", escape(lang))
+                };
                 format!("<div class=\"code\">{l}<pre><code>{}</code></pre></div>\n", escape(&b.text))
             }
             BlockKind::Divider => "<hr>\n".to_string(),
@@ -351,7 +355,11 @@ impl R<'_, '_> {
                             _ => "",
                         };
                         let style = if css.is_empty() { class.to_string() } else { format!("{class} style=\"{css}\"") };
-                        let cap = if caption.is_empty() { String::new() } else { format!("<figcaption>{}</figcaption>", escape(&caption)) };
+                        let cap = if caption.is_empty() {
+                            String::new()
+                        } else {
+                            format!("<figcaption>{}</figcaption>", escape(&caption))
+                        };
                         format!(
                             "<figure{style}><img src=\"{}\" alt=\"{}\" loading=\"lazy\">{cap}</figure>\n",
                             escape(&src),
@@ -424,7 +432,9 @@ fn css() -> String {
     for (n, lt, dt, lb, db) in COLORS {
         light.push_str(&format!("--{n}:{lt};--{n}-bg:{lb};"));
         dark.push_str(&format!("--{n}:{dt};--{n}-bg:{db};"));
-        classes.push_str(&format!(".c-{n}{{color:var(--{n})}}.bg-{n}{{background:var(--{n}-bg)!important;border-radius:4px}}\n"));
+        classes.push_str(&format!(
+            ".c-{n}{{color:var(--{n})}}.bg-{n}{{background:var(--{n}-bg)!important;border-radius:4px}}\n"
+        ));
     }
     format!(
         ":root{{color-scheme:light dark;--bg:#fff;--text:#2c2c2b;--text2:#7d7a75;--faint:#a19e99;--border:#e6e5e3;--accent:#2783de;--code:#f4f3f3;--callout:#f0efed;--hover:rgba(33,27,23,.05);{light}}}\n\
@@ -520,7 +530,14 @@ pub fn render_page(opts: &Options, blocks: &[Block], hooks: &mut Hooks) -> Strin
         let items: Vec<String> = opts
             .children
             .iter()
-            .map(|c| format!("<a href=\"{}\"><span>{}</span><span>{}</span></a>", escape(&c.url), escape(&c.icon), escape(&c.title)))
+            .map(|c| {
+                format!(
+                    "<a href=\"{}\"><span>{}</span><span>{}</span></a>",
+                    escape(&c.url),
+                    escape(&c.icon),
+                    escape(&c.title)
+                )
+            })
             .collect();
         format!("<section class=\"sub\"><h5>Pages</h5>{}</section>\n", items.join(""))
     };

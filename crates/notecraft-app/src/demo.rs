@@ -16,21 +16,131 @@ const IMAGES: &[(&str, &[u8])] = &[
 type Slide = (&'static str, &'static str, &'static [&'static str], &'static str);
 
 const FR: &[Slide] = &[
-    ("Le principe", "Vos notes restent à vous", &["De simples fichiers Markdown dans un dossier que vous choisissez", "Sans compte, sans suivi, sans abonnement", "Application native, rapide, même hors ligne"], ""),
-    ("Écrire", "Un éditeur par blocs", &["Titres, listes, tâches, citations, encadrés, code", "Colonnes, tableaux, images redimensionnables", "Pages dans les pages, liens et rétroliens", "Onglets, mode sombre, raccourcis partout"], "page.jpg"),
-    ("Organiser", "Des bases de données vivantes", &["Tableau, kanban, liste, calendrier, galerie, graphique, frise", "Formules, cumuls et relations entre bases", "Chaque ligne est une vraie page"], "board.jpg"),
-    ("Réunions", "Enregistrez, transcrivez, résumez", &["La transcription se fait sur votre Mac", "Intervenants distingués et renommables", "Compte rendu rédigé par l'IA de votre choix"], "meeting.jpg"),
-    ("Intelligence artificielle", "L'IA, à votre façon", &["Ollama en local, ou votre propre clé Claude, ChatGPT ou Grok", "Vous voyez toujours le résultat avant tout changement", "Claude Desktop et Claude Code travaillent sur vos notes via MCP"], "ai.jpg"),
-    ("Partager", "Publiez en un clic", &["Lien privé impossible à deviner, gratuit, sur votre compte Cloudflare", "Aperçu, mise à jour et retrait quand vous voulez", "Schémas, équations et mode sombre inclus"], "page-dark.jpg"),
+    (
+        "Le principe",
+        "Vos notes restent à vous",
+        &[
+            "De simples fichiers Markdown dans un dossier que vous choisissez",
+            "Sans compte, sans suivi, sans abonnement",
+            "Application native, rapide, même hors ligne",
+        ],
+        "",
+    ),
+    (
+        "Écrire",
+        "Un éditeur par blocs",
+        &[
+            "Titres, listes, tâches, citations, encadrés, code",
+            "Colonnes, tableaux, images redimensionnables",
+            "Pages dans les pages, liens et rétroliens",
+            "Onglets, mode sombre, raccourcis partout",
+        ],
+        "page.jpg",
+    ),
+    (
+        "Organiser",
+        "Des bases de données vivantes",
+        &[
+            "Tableau, kanban, liste, calendrier, galerie, graphique, frise",
+            "Formules, cumuls et relations entre bases",
+            "Chaque ligne est une vraie page",
+        ],
+        "board.jpg",
+    ),
+    (
+        "Réunions",
+        "Enregistrez, transcrivez, résumez",
+        &[
+            "La transcription se fait sur votre Mac",
+            "Intervenants distingués et renommables",
+            "Compte rendu rédigé par l'IA de votre choix",
+        ],
+        "meeting.jpg",
+    ),
+    (
+        "Intelligence artificielle",
+        "L'IA, à votre façon",
+        &[
+            "Ollama en local, ou votre propre clé Claude, ChatGPT ou Grok",
+            "Vous voyez toujours le résultat avant tout changement",
+            "Claude Desktop et Claude Code travaillent sur vos notes via MCP",
+        ],
+        "ai.jpg",
+    ),
+    (
+        "Partager",
+        "Publiez en un clic",
+        &[
+            "Lien privé impossible à deviner, gratuit, sur votre compte Cloudflare",
+            "Aperçu, mise à jour et retrait quand vous voulez",
+            "Schémas, équations et mode sombre inclus",
+        ],
+        "page-dark.jpg",
+    ),
 ];
 
 const EN: &[Slide] = &[
-    ("The idea", "Your notes stay yours", &["Plain Markdown files in a folder you choose", "No account, no tracking, no subscription", "Native, fast, works offline"], ""),
-    ("Write", "A block editor", &["Headings, lists, tasks, quotes, callouts, code", "Columns, tables, resizable images", "Nested pages, links and backlinks", "Tabs, dark mode, shortcuts everywhere"], "page.jpg"),
-    ("Organise", "Living databases", &["Table, board, list, calendar, gallery, chart, timeline", "Formulas, rollups and relations between databases", "Every row is a real page"], "board.jpg"),
-    ("Meetings", "Record, transcribe, summarise", &["Transcription runs on your Mac", "Speakers told apart and renameable", "Minutes written by the AI of your choice"], "meeting.jpg"),
-    ("Artificial intelligence", "AI, your way", &["Ollama locally, or your own Claude, ChatGPT or Grok key", "You always see the result before anything changes", "Claude Desktop and Claude Code work on your notes through MCP"], "ai.jpg"),
-    ("Share", "Publish in one click", &["Private, unguessable link, free, on your own Cloudflare account", "Preview, update and withdraw whenever you want", "Diagrams, equations and dark mode included"], "page-dark.jpg"),
+    (
+        "The idea",
+        "Your notes stay yours",
+        &[
+            "Plain Markdown files in a folder you choose",
+            "No account, no tracking, no subscription",
+            "Native, fast, works offline",
+        ],
+        "",
+    ),
+    (
+        "Write",
+        "A block editor",
+        &[
+            "Headings, lists, tasks, quotes, callouts, code",
+            "Columns, tables, resizable images",
+            "Nested pages, links and backlinks",
+            "Tabs, dark mode, shortcuts everywhere",
+        ],
+        "page.jpg",
+    ),
+    (
+        "Organise",
+        "Living databases",
+        &[
+            "Table, board, list, calendar, gallery, chart, timeline",
+            "Formulas, rollups and relations between databases",
+            "Every row is a real page",
+        ],
+        "board.jpg",
+    ),
+    (
+        "Meetings",
+        "Record, transcribe, summarise",
+        &[
+            "Transcription runs on your Mac",
+            "Speakers told apart and renameable",
+            "Minutes written by the AI of your choice",
+        ],
+        "meeting.jpg",
+    ),
+    (
+        "Artificial intelligence",
+        "AI, your way",
+        &[
+            "Ollama locally, or your own Claude, ChatGPT or Grok key",
+            "You always see the result before anything changes",
+            "Claude Desktop and Claude Code work on your notes through MCP",
+        ],
+        "ai.jpg",
+    ),
+    (
+        "Share",
+        "Publish in one click",
+        &[
+            "Private, unguessable link, free, on your own Cloudflare account",
+            "Preview, update and withdraw whenever you want",
+            "Diagrams, equations and dark mode included",
+        ],
+        "page-dark.jpg",
+    ),
 ];
 
 /// One page of the demo.
@@ -44,10 +154,27 @@ pub struct Page {
 /// The pages in the language of the app: a cover, the feature slides and a closing page.
 pub fn pages(lang: Lang) -> Vec<Page> {
     let (slides, tagline, end_k, end_t, end_p) = match lang {
-        Lang::Fr => (FR, "Notes, bases de données et idées dans une seule app Mac. Vos fichiers, votre dossier, vos règles.", "Pour essayer", "Gratuit pour tout usage non commercial", "Mac Apple silicon, macOS 11 ou plus récent. github.com/yanickimhof/notecraft"),
-        Lang::En => (EN, "Notes, databases and ideas in one Mac app. Your files, your folder, your rules.", "Try it", "Free for any non-commercial use", "Apple silicon Mac, macOS 11 or later. github.com/yanickimhof/notecraft"),
+        Lang::Fr => (
+            FR,
+            "Notes, bases de données et idées dans une seule app Mac. Vos fichiers, votre dossier, vos règles.",
+            "Pour essayer",
+            "Gratuit pour tout usage non commercial",
+            "Mac Apple silicon, macOS 11 ou plus récent. github.com/yanickimhof/notecraft",
+        ),
+        Lang::En => (
+            EN,
+            "Notes, databases and ideas in one Mac app. Your files, your folder, your rules.",
+            "Try it",
+            "Free for any non-commercial use",
+            "Apple silicon Mac, macOS 11 or later. github.com/yanickimhof/notecraft",
+        ),
     };
-    let mut v = vec![Page { kicker: String::new(), title: "NøteCraft".into(), bullets: vec![tagline.into()], image: Some("icon.png") }];
+    let mut v = vec![Page {
+        kicker: String::new(),
+        title: "NøteCraft".into(),
+        bullets: vec![tagline.into()],
+        image: Some("icon.png"),
+    }];
     for (k, t, b, img) in slides {
         v.push(Page {
             kicker: (*k).into(),
@@ -141,7 +268,13 @@ impl crate::app::NcApp {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut never, never_t);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(RichText::new(if last { done_t } else { next_t }).size(14.0)).fill(pal.accent_soft)).clicked() {
+                    if ui
+                        .add(
+                            egui::Button::new(RichText::new(if last { done_t } else { next_t }).size(14.0))
+                                .fill(pal.accent_soft),
+                        )
+                        .clicked()
+                    {
                         next = true;
                     }
                     if at > 0 && ui.button(back_t).clicked() {
