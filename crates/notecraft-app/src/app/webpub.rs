@@ -314,7 +314,7 @@ impl NcApp {
         self.run_guarded(g.action);
     }
 
-    /// The question itself: unpublish and go on, or cancel and leave everything as it is.
+    /// The question itself: unpublish and go on, or keep the page as it is.
     pub fn pub_guard_window(&mut self, ctx: &egui::Context) {
         let Some(mut g) = self.pub_guard.take() else { return };
         let pal = self.pal;
@@ -322,7 +322,7 @@ impl NcApp {
         let (text, ok) = match g.action {
             GuardAction::Trash(_) => ("pubg_text_trash", "pubg_ok_trash"),
             GuardAction::Archive(_) => ("pubg_text_archive", "pubg_ok_archive"),
-            GuardAction::DeleteForever(_) | GuardAction::EmptyTrash => ("pubg_text_delete", "pubg_ok_delete"),
+            GuardAction::DeleteForever(_) | GuardAction::EmptyTrash => ("pubg_text_delete", "pubg_ok_trash"),
         };
         let titles: Vec<String> = g
             .roots
@@ -332,27 +332,41 @@ impl NcApp {
             })
             .collect();
         let (mut go, mut cancel) = (false, false);
-        egui::Window::new(tr(lang, "pubg_title"))
+        egui::Window::new("pub_guard")
+            .title_bar(false)
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
-                ui.set_width(380.0);
+                ui.set_width(300.0);
+                ui.label(RichText::new(tr(lang, "pubg_title")).size(15.0).strong());
+                ui.add_space(4.0);
                 ui.label(RichText::new(tr(lang, text)).size(13.0).color(pal.text_secondary));
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 for t in &titles {
-                    ui.label(RichText::new(t).size(13.0));
+                    egui::Frame::new()
+                        .fill(pal.code_bg)
+                        .corner_radius(egui::CornerRadius::same(6))
+                        .inner_margin(egui::Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.add(egui::Label::new(RichText::new(t).size(13.0).strong()).truncate());
+                        });
                 }
                 if !g.error.is_empty() {
                     ui.add_space(4.0);
                     ui.label(RichText::new(&g.error).size(12.0).color(pal.danger));
                 }
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.add_enabled(!g.busy, egui::Button::new(tr(lang, ok))).clicked() {
+                ui.add_space(12.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let main = egui::Button::new(RichText::new(tr(lang, ok)).size(13.0).color(pal.bg))
+                        .fill(pal.text)
+                        .corner_radius(egui::CornerRadius::same(6));
+                    if ui.add_enabled(!g.busy, main).clicked() {
                         go = true;
                     }
-                    if ui.add_enabled(!g.busy, egui::Button::new(tr(lang, "cancel"))).clicked() {
+                    let keep = egui::Button::new(RichText::new(tr(lang, "pubg_keep")).size(13.0)).frame(false);
+                    if ui.add_enabled(!g.busy, keep).clicked() {
                         cancel = true;
                     }
                     if g.busy {
