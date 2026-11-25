@@ -104,7 +104,14 @@ impl crate::app::NcApp {
         let modal = egui::Modal::new(egui::Id::new("nc-demo")).show(ctx, |ui| {
             ui.set_width(720.0);
             let page = &pages[at];
-            ui.vertical_centered(|ui| {
+            // Every page has the same height, so Next stays under the pointer: click, click, click.
+            ui.allocate_ui_with_layout(Vec2::new(720.0, 420.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+                ui.set_min_size(Vec2::new(720.0, 420.0));
+                match page.image {
+                    None => ui.add_space(110.0),
+                    Some("icon.png") => ui.add_space(50.0),
+                    _ => {}
+                }
                 if let Some(img) = page.image {
                     let (w, h) = if img == "icon.png" { (120.0, 120.0) } else { (680.0, 360.0) };
                     ui.add(
