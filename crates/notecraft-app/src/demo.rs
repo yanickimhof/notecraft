@@ -197,7 +197,12 @@ impl crate::app::NcApp {
     /// It opens by itself once the workspace is open, until the person asks not to see it again.
     pub(crate) fn demo_window(&mut self, ctx: &eframe::egui::Context) {
         use eframe::egui::{self, RichText, Vec2};
-        if self.demo_at.is_none() && !self.demo_auto_done && self.ws.is_some() && !self.prefs.demo_seen {
+        if self.demo_at.is_none()
+            && !self.demo_auto_done
+            && self.ws.is_some()
+            && !self.prefs.demo_seen
+            && self.shot.is_none()
+        {
             self.demo_auto_done = true;
             self.demo_at = Some(0);
         }
