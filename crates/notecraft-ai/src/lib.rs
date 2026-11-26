@@ -15,7 +15,7 @@ pub mod prompts;
 pub mod publish;
 pub mod webpage;
 
-pub use prompts::{build_notes_prompt, build_prompt, AiAction, Prompt, NOTE_TEMPLATES};
+pub use prompts::{build_notes_prompt, build_prompt, note_structure_text, AiAction, Prompt, NOTE_TEMPLATES};
 
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -339,6 +339,21 @@ pub fn ollama_models(url: &str, t: Timeouts) -> Result<Vec<String>, AiError> {
         .unwrap_or_default();
     names.sort();
     Ok(names)
+}
+
+/// Removes a model from Ollama (`DELETE /api/delete`).
+pub fn ollama_delete(url: &str, model: &str) -> Result<(), AiError> {
+    let base = trim_url(url);
+    let t = Timeouts { connect: Duration::from_secs(4), total: Duration::from_secs(30) };
+    let resp = agent(t)
+        .delete(format!("{base}/api/delete"))
+        .force_send_body()
+        .send_json(json!({"model": model}))
+        .map_err(|e| map_err(e, Some(&base)))?;
+    match resp.status().as_u16() {
+        200 => Ok(()),
+        s => Err(AiError::Api(s, String::new())),
+    }
 }
 
 /// Downloads a model into Ollama (`POST /api/pull`), which streams its progress line by line.

@@ -490,7 +490,8 @@ pub fn srow_tip(
     }
     let mut child =
         ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::right_to_left(egui::Align::Center)));
-    child.set_clip_rect(rect);
+    // a row scrolled out of its page must not draw its control over the rest of the window
+    child.set_clip_rect(rect.intersect(ui.clip_rect()));
     right(&mut child);
 }
 
@@ -682,7 +683,14 @@ pub fn menu_label(ui: &mut Ui, pal: &Palette, text: &str) {
 
 /// The model of the AI line: its name on a quiet pill; a click opens the list, the current one ticked.
 /// Returns the model picked.
-pub fn model_menu(ui: &mut Ui, pal: &Palette, current: &str, models: &[String]) -> Option<String> {
+/// The model drop-down; `extra` adds entries at the end of the list (downloads, removal).
+pub fn model_menu(
+    ui: &mut Ui,
+    pal: &Palette,
+    current: &str,
+    models: &[String],
+    extra: impl FnOnce(&mut Ui),
+) -> Option<String> {
     let shown = if current.chars().count() > 26 {
         format!("{}…", current.chars().take(25).collect::<String>())
     } else {
@@ -724,6 +732,7 @@ pub fn model_menu(ui: &mut Ui, pal: &Palette, current: &str, models: &[String]) 
                     ui.close();
                 }
             }
+            extra(ui);
         });
     });
     picked

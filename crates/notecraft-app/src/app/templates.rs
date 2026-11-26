@@ -67,20 +67,6 @@ pub fn note_template_text(ws: &Workspace, key: &str) -> Option<String> {
     (!md.trim().is_empty()).then_some(md)
 }
 
-fn sample_note_template(fr: bool) -> (&'static str, &'static str) {
-    if fr {
-        (
-            "Décisions et points ouverts",
-            "Écris des notes courtes avec ces titres : ## Contexte (2 lignes), ## Décisions (puces), ## Points ouverts (puces), ## Actions (cases à cocher avec responsable et échéance si dits). N'invente rien.",
-        )
-    } else {
-        (
-            "Decisions and open points",
-            "Write short notes with these headings: ## Context (2 lines), ## Decisions (bullets), ## Open points (bullets), ## Actions (to-dos with owner and due date when stated). Invent nothing.",
-        )
-    }
-}
-
 fn minutes(fr: bool) -> (&'static str, &'static str) {
     if fr {
         (
@@ -101,7 +87,7 @@ impl NcApp {
     pub fn ensure_templates(&mut self) {
         let fr = self.prefs.lang == Lang::Fr;
         let Some(ws) = self.ws.as_mut() else { return };
-        if templates_root(ws).is_some() && notes_group(ws).is_some() {
+        if templates_root(ws).is_some() && notes_group(ws).is_some() && self.prefs.meeting.notes_seeded {
             return;
         }
         let result = (|| -> notecraft_core::Result<()> {
@@ -137,35 +123,53 @@ impl NcApp {
                     root
                 }
             };
-            let (gtitle, gintro) = if fr {
-                (
-                    "Notes de réunion",
-                    "Chaque sous-page est un modèle de notes : écrivez-y la structure et les consignes que l'IA suit pour rédiger les notes d'une réunion enregistrée. Le modèle se choisit dans le bloc de réunion.",
-                )
-            } else {
-                (
-                    "Meeting notes",
-                    "Each sub-page is a notes template: write the structure and the instructions the AI follows to write the notes of a recorded meeting. Pick the template in the meeting block.",
-                )
+            let group = match notes_group(ws) {
+                Some(g) => g,
+                None => {
+                    let (gtitle, gintro) = if fr {
+                        (
+                            "Notes de réunion",
+                            "Chaque sous-page est un modèle de notes : écrivez-y la structure et les consignes que l'IA suit pour rédiger les notes d'une réunion enregistrée. Modifiez-les librement. Le modèle se choisit dans le bloc de réunion.",
+                        )
+                    } else {
+                        (
+                            "Meeting notes",
+                            "Each sub-page is a notes template: write the structure and the instructions the AI follows to write the notes of a recorded meeting. Edit them freely. Pick the template in the meeting block.",
+                        )
+                    };
+                    let g = ws.create_page(Some(&root), gtitle)?;
+                    {
+                        let p = ws.pages.get_mut(&g).unwrap();
+                        p.meta.icon = "🎙".into();
+                        p.blocks = vec![Block::paragraph(gintro)];
+                    }
+                    ws.save_page(&g)?;
+                    g
+                }
             };
-            let group = ws.create_page(Some(&root), gtitle)?;
-            {
-                let p = ws.pages.get_mut(&group).unwrap();
-                p.meta.icon = "🎙".into();
-                p.blocks = vec![Block::paragraph(gintro)];
+            // the built-in note templates become pages, so that they can be edited like the others
+            let lang = if fr { Lang::Fr } else { Lang::En };
+            let existing: Vec<String> = ws.children(Some(&group)).into_iter().map(|c| c.title).collect();
+            for key in notecraft_ai::NOTE_TEMPLATES.iter().filter(|k| **k != "custom") {
+                let name = crate::meeting::template_label(lang, key);
+                if existing.iter().any(|t| t == name) {
+                    continue;
+                }
+                let sub = ws.create_page(Some(&group), name)?;
+                {
+                    let p = ws.pages.get_mut(&sub).unwrap();
+                    p.blocks = vec![Block::paragraph(notecraft_ai::note_structure_text(key))];
+                }
+                ws.save_page(&sub)?;
             }
-            ws.save_page(&group)?;
-            let (name, text) = sample_note_template(fr);
-            let sub = ws.create_page(Some(&group), name)?;
-            {
-                let p = ws.pages.get_mut(&sub).unwrap();
-                p.blocks = vec![Block::paragraph(text)];
-            }
-            ws.save_page(&sub)?;
             Ok(())
         })();
-        if let Err(e) = result {
-            self.notify(e.to_string());
+        match result {
+            Ok(()) => {
+                self.prefs.meeting.notes_seeded = true;
+                self.prefs.meeting.template = self.effective_template();
+            }
+            Err(e) => self.notify(e.to_string()),
         }
     }
 

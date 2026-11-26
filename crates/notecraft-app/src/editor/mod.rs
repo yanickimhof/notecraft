@@ -1103,6 +1103,25 @@ impl EditorState {
                 deferred.push(Deferred::Shortcut(i, kind, strip));
             }
         }
+        // files being dragged over the window: a line shows where they will land (after the block under the pointer)
+        if ctx.input(|i| !i.raw.hovered_files.is_empty()) {
+            let last = blocks.len().saturating_sub(1);
+            let at = self.insert_hint.unwrap_or(last).min(last);
+            if let Some((_, r)) = rects.iter().find(|(j, _)| *j == at).or(rects.last()) {
+                let y = r.max.y + 2.0;
+                let x0 = r.min.x + gutter;
+                let stroke = Stroke::new(2.5, env.pal.accent);
+                ui.painter().hline(x0..=r.max.x, y, stroke);
+                ui.painter().circle_filled(egui::pos2(x0, y), 4.0, env.pal.accent);
+                ui.painter().text(
+                    egui::pos2(x0 + 10.0, y + 4.0),
+                    Align2::LEFT_TOP,
+                    tr(env.lang, "drop_here"),
+                    FontId::proportional(12.0),
+                    env.pal.accent,
+                );
+            }
+        }
         if self.slash.is_some() {
             self.slash_menu_ui(&ctx, blocks, &rects, env, &mut deferred);
         }
@@ -2184,18 +2203,28 @@ impl EditorState {
                                         }
                                     }
                                     // the kind of meeting: how the notes will be written
-                                    let mut tpls: Vec<(String, String)> = notecraft_ai::NOTE_TEMPLATES
-                                        .iter()
-                                        .map(|k| ((*k).to_string(), crate::meeting::template_label(lang, k).to_string()))
-                                        .collect();
-                                    tpls.extend(v.custom_templates.iter().cloned());
+                                    // the templates are the pages of the Meeting notes group; the built-in
+                                    // ones are only used until those pages exist
+                                    let mut tpls: Vec<(String, String)> = if v.custom_templates.is_empty() {
+                                        notecraft_ai::NOTE_TEMPLATES
+                                            .iter()
+                                            .map(|k| ((*k).to_string(), crate::meeting::template_label(lang, k).to_string()))
+                                            .collect()
+                                    } else {
+                                        v.custom_templates.clone()
+                                    };
                                     let cur = tpls
                                         .iter()
                                         .find(|(k, _)| *k == v.template)
                                         .map(|(_, l)| short(l, 24))
-                                        .unwrap_or_default();
+                                        .unwrap_or_else(|| short(crate::meeting::template_label(lang, &v.template), 24));
+                                    tpls.push(("__manage__".to_string(), tr(lang, "meeting_manage_templates").to_string()));
                                     if let Some(k) = quiet_menu(ui, pal, &cur, &tpls, &v.template, tr(lang, "meeting_template")) {
-                                        act = Some(crate::meeting::MeetingAction::SetTemplate(k));
+                                        act = Some(if k == "__manage__" {
+                                            crate::meeting::MeetingAction::ManageTemplates
+                                        } else {
+                                            crate::meeting::MeetingAction::SetTemplate(k)
+                                        });
                                     }
                                     if has_transcript {
                                         ui.add_space(6.0);
@@ -2218,19 +2247,6 @@ impl EditorState {
                                             .on_hover_text(tr(lang, "meeting_reset"));
                                         if r.clicked() {
                                             act = Some(crate::meeting::MeetingAction::ResetSettings);
-                                        }
-                                        {
-                                            let m = ui
-                                                .add(
-                                                    egui::Button::new(
-                                                        RichText::new("\u{270e}").size(13.0).color(pal.text_faint),
-                                                    )
-                                                    .frame(false),
-                                                )
-                                                .on_hover_text(tr(lang, "meeting_manage_templates"));
-                                            if m.clicked() {
-                                                act = Some(crate::meeting::MeetingAction::ManageTemplates);
-                                            }
                                         }
                                     });
                                 });

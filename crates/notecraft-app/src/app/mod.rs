@@ -731,7 +731,8 @@ impl NcApp {
                     let title = Self::unique_title(ws, untitled);
                     match ws.create_page(parent.as_deref(), &title) {
                         Ok(id) => {
-                            self.insert_blocks(index, replace, vec![Block::paragraph(format!("[[{title}]]"))]);
+                            // the new page is listed in the Sub-pages section of this page: no link in the body
+                            let _ = (index, replace);
                             self.flush_save();
                             self.navigate(Target::Doc(DocId::Page(id)));
                             self.focus_title = true;

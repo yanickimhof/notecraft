@@ -148,14 +148,6 @@ impl NcApp {
             self.close_windows();
             self.settings_open = true;
         }
-        if nav_item(ui, &pal, Icon::Clock, tr(lang, "reminders"), None).clicked() {
-            self.close_windows();
-            self.reminders_open = true;
-        }
-        if nav_item(ui, &pal, Icon::Graph, tr(lang, "graph"), None).clicked() {
-            self.close_windows();
-            self.graph_open = true;
-        }
         let import_resp = nav_item(ui, &pal, Icon::Import, tr(lang, "import"), None);
         let mut import_pick = 0u8;
         egui::Popup::menu(&import_resp).show(|ui| {
@@ -196,41 +188,43 @@ impl NcApp {
             |ui| {
                 let favs = self.ws.as_ref().map(|w| w.favorites()).unwrap_or_default();
                 if !favs.is_empty() {
-                    section(ui, &pal, tr(lang, "favorites"));
-                    for f in favs {
-                        let r = self.tree_row(ui, &f, 0, "fav", &mut drop, false);
-                        if r {
-                            nav = Some(f.doc.clone());
-                            nav_fav = true;
+                    let (open, _) = section_toggle(ui, &pal, tr(lang, "favorites"), "favorites", false);
+                    if open {
+                        for f in favs {
+                            let r = self.tree_row(ui, &f, 0, "fav", &mut drop, false);
+                            if r {
+                                nav = Some(f.doc.clone());
+                                nav_fav = true;
+                            }
                         }
                     }
                     ui.add_space(10.0);
                 }
-                let (_, add_clicked) = section_with_add(ui, &pal, tr(lang, "pages"));
+                let (pages_open, add_clicked) = section_toggle(ui, &pal, tr(lang, "pages"), "pages", true);
                 if add_clicked {
                     self.new_page(None);
                 }
                 let top = self.ws.as_ref().map(|w| w.children(None)).unwrap_or_default();
-                if top.is_empty() {
+                if top.is_empty() && pages_open {
                     ui.label(RichText::new(tr(lang, "no_pages")).size(13.0).color(pal.text_faint));
                 }
                 let troot = self.ws.as_ref().and_then(crate::app::templates_root);
                 for item in top {
                     // the templates have a section of their own
-                    if troot.as_deref() == Some(item.doc.id()) {
+                    if troot.as_deref() == Some(item.doc.id()) || !pages_open {
                         continue;
                     }
                     self.tree(ui, &item, 0, &mut drop, &mut nav);
                 }
                 ui.add_space(10.0);
-                let (_, add_tpl) = section_with_add(ui, &pal, tr(lang, "templates"));
+                let (tpl_open, add_tpl) = section_toggle(ui, &pal, tr(lang, "templates"), "templates", true);
                 if add_tpl {
                     self.ensure_templates();
                     if let Some(root) = self.ws.as_ref().and_then(crate::app::templates_root) {
                         self.new_page(Some(root));
                     }
                 }
-                if let Some(root) = troot {
+                if let (Some(root), true) = (troot, tpl_open) {
                     let group = self.ws.as_ref().and_then(crate::app::notes_group);
                     let kids = self.ws.as_ref().map(|w| w.children(Some(&root))).unwrap_or_default();
                     for k in kids.iter().filter(|k| Some(k.doc.id()) != group.as_deref()) {
@@ -238,16 +232,16 @@ impl NcApp {
                     }
                     if let Some(g) = group {
                         ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.add_space(6.0);
-                            ui.label(RichText::new(tr(lang, "templates_notes")).size(12.0).color(pal.text_faint));
-                        });
-                        let notes = self.ws.as_ref().map(|w| w.children(Some(&g))).unwrap_or_default();
-                        for k in notes {
-                            self.tree(ui, &k, 0, &mut drop, &mut nav);
+                        let (notes_open, _) =
+                            section_toggle(ui, &pal, tr(lang, "templates_notes"), "templates_notes", false);
+                        if notes_open {
+                            let notes = self.ws.as_ref().map(|w| w.children(Some(&g))).unwrap_or_default();
+                            for k in notes {
+                                self.tree(ui, &k, 0, &mut drop, &mut nav);
+                            }
                         }
                     }
-                } else {
+                } else if tpl_open {
                     ui.label(RichText::new(tr(lang, "templates_none")).size(12.5).color(pal.text_faint));
                 }
             },
@@ -686,32 +680,38 @@ fn nav_item(ui: &mut Ui, pal: &crate::theme::Palette, icon: Icon, label: &str, h
     resp
 }
 
-fn section(ui: &mut Ui, pal: &crate::theme::Palette, label: &str) {
-    ui.add_space(2.0);
-    ui.label(RichText::new(label).size(12.0).color(pal.text_faint));
-    ui.add_space(2.0);
-}
-
-fn section_with_add(ui: &mut Ui, pal: &crate::theme::Palette, label: &str) -> (egui::Response, bool) {
+/// A section title that folds and unfolds its list (the state is remembered), with an optional + on hover.
+/// Returns (open, + clicked).
+fn section_toggle(ui: &mut Ui, pal: &crate::theme::Palette, label: &str, key: &str, with_add: bool) -> (bool, bool) {
+    let id = Id::unique(("side-section", key));
+    let mut open: bool = ui.data_mut(|d| *d.get_persisted_mut_or(id, true));
     let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 22.0), Sense::hover());
-    ui.painter().text(
-        egui::pos2(rect.min.x + 4.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        label,
-        FontId::proportional(12.0),
-        pal.text_faint,
-    );
-    let mut clicked = false;
-    if ui.rect_contains_pointer(rect) {
-        let plus = egui::Rect::from_center_size(egui::pos2(rect.max.x - 14.0, rect.center().y), Vec2::splat(20.0));
-        let pr = ui.interact(plus, Id::unique(("section-add", label)), Sense::click());
-        crate::widgets::a11y(&pr, label);
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 22.0), Sense::click());
+    crate::widgets::a11y(&resp, label);
+    let plus = egui::Rect::from_center_size(egui::pos2(rect.max.x - 14.0, rect.center().y), Vec2::splat(20.0));
+    let mut add_clicked = false;
+    let mut on_plus = false;
+    if with_add && ui.rect_contains_pointer(rect) {
+        let pr = ui.interact(plus, Id::unique(("section-add", key)), Sense::click());
         if pr.hovered() {
             ui.painter().rect_filled(plus, CornerRadius::same(4), pal.hover);
         }
         ui.painter().text(plus.center(), Align2::CENTER_CENTER, "+", FontId::proportional(15.0), pal.text_secondary);
-        clicked = pr.clicked();
+        add_clicked = pr.clicked();
+        on_plus = pr.hovered();
     }
-    (resp, clicked)
+    if resp.clicked() && !on_plus {
+        open = !open;
+        ui.data_mut(|d| d.insert_persisted(id, open));
+    }
+    let caret = if open { "\u{25be}" } else { "\u{25b8}" };
+    ui.painter().text(
+        egui::pos2(rect.min.x + 4.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        format!("{caret} {label}"),
+        FontId::proportional(12.0),
+        pal.text_faint,
+    );
+    (open, add_clicked)
 }
+

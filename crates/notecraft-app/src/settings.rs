@@ -801,7 +801,7 @@ impl NcApp {
     /// The AI lines. First: where the text goes, as icons (this Mac, Claude, OpenAI, Grok), with the
     /// key of a cloud service. Second: the model, in a small menu.
     fn ai_row(&mut self, ui: &mut Ui) {
-        use crate::widgets::{icon_action, icon_choice, model_menu, srow, text_link, Glyph};
+        use crate::widgets::{icon_action, icon_choice, srow, text_link, Glyph};
         let pal = self.pal;
         let lang = self.prefs.lang;
         let engine = self.prefs.ai.engine;
@@ -853,23 +853,74 @@ impl NcApp {
         let ready = provider.is_some() || matches!(ostate, OllamaState::Ready | OllamaState::Checking);
         let mut model: Option<String> = None;
         let (mut launch, mut download) = (false, false);
+        let local = provider.is_none();
+        let can_pick = ready || (local && matches!(ostate, OllamaState::NoModel));
+        let mut pull_start: Option<String> = None;
+        let mut delete_model: Option<String> = None;
         srow(ui, &pal, tr(lang, "ai_model"), "", None, |ui| {
-            if ready {
-                if !models.is_empty() {
-                    model = model_menu(ui, &pal, &current, &models);
+            if can_pick {
+                if !models.is_empty() || local {
+                    model = crate::widgets::model_menu(ui, &pal, &current, &models, |ui| {
+                        if !local {
+                            return;
+                        }
+                        use std::sync::atomic::Ordering;
+                        ui.separator();
+                        let busy = self.ai.pull.is_some();
+                        for (tag, size) in
+                            [("qwen2.5:7b", "4.7 GB"), ("llama3.2", "2 GB"), ("qwen2.5:3b", "1.9 GB"), ("qwen2.5:1.5b", "1 GB")]
+                        {
+                            if models.iter().any(|m| m == tag || m.starts_with(&format!("{tag}:"))) {
+                                continue;
+                            }
+                            match self.ai.pull.as_ref().filter(|j| j.model == tag) {
+                                Some(job) => {
+                                    let (d, t) = (job.done.load(Ordering::Relaxed), job.total.load(Ordering::Relaxed));
+                                    let pct = (d * 100).checked_div(t).map_or("…".to_string(), |v| format!("{v}%"));
+                                    ui.horizontal(|ui| {
+                                        ui.label(RichText::new(format!("{tag} {pct}")).size(13.0).color(pal.text_faint));
+                                        if text_link(ui, &pal, tr(lang, "cancel")).clicked() {
+                                            job.cancel.store(true, Ordering::Relaxed);
+                                        }
+                                    });
+                                }
+                                None => {
+                                    let label = format!("\u{2193} {tag}  ({size})");
+                                    if ui.add_enabled(!busy, egui::Button::new(label).frame(false)).clicked() {
+                                        pull_start = Some(tag.to_string());
+                                        ui.close();
+                                    }
+                                }
+                            }
+                        }
+                        if !models.is_empty() {
+                            ui.menu_button(tr(lang, "remove"), |ui| {
+                                for m in &models {
+                                    if ui.button(m).clicked() {
+                                        delete_model = Some(m.clone());
+                                        ui.close();
+                                    }
+                                }
+                            });
+                        }
+                    });
                 }
             } else {
                 match ostate {
                     OllamaState::Missing => download = text_link(ui, &pal, tr(lang, "ollama_download")).clicked(),
                     OllamaState::Stopped => launch = text_link(ui, &pal, tr(lang, "ollama_launch")).clicked(),
-                    _ => {
-                        ui.label(RichText::new(tr(lang, "ollama_no_model")).size(12.0).color(pal.text_faint));
-                    }
+                    _ => {}
                 }
             }
         });
-        if engine == EngineChoice::Ollama && !matches!(ostate, OllamaState::Missing | OllamaState::Stopped) {
-            self.local_models_rows(ui);
+        if let Some(m) = pull_start {
+            self.start_pull(&m);
+        }
+        if let Some(m) = delete_model {
+            let url = self.prefs.ai.ollama_url.clone();
+            let _ = notecraft_ai::ollama_delete(&url, &m);
+            self.ai.models_error = None;
+            self.refresh_models();
         }
 
         if let Some(e) = pick {
@@ -971,53 +1022,6 @@ impl NcApp {
         if remove {
             let _ = keychain::delete_key(p);
             self.forget_models_for(p);
-        }
-    }
-
-    /// Suggested local models: one row each, to download or to choose.
-    fn local_models_rows(&mut self, ui: &mut Ui) {
-        use crate::widgets::{icon_action, icon_choice, srow, Glyph};
-        use std::sync::atomic::Ordering;
-        let pal = self.pal;
-        let lang = self.prefs.lang;
-        let current = self.prefs.ai.model().to_string();
-        let mut start: Option<&str> = None;
-        let mut choose: Option<String> = None;
-        for (tag, size) in [("qwen2.5:7b", "4.7 GB"), ("llama3.2", "2 GB"), ("qwen2.5:3b", "1.9 GB"), ("qwen2.5:1.5b", "1 GB")] {
-            let installed = self.ai.models.iter().find(|m| *m == tag || m.starts_with(&format!("{tag}:")));
-            let pulling = self.ai.pull.as_ref().filter(|j| j.model == tag);
-            let busy = self.ai.pull.is_some();
-            let sub = match pulling {
-                Some(job) => {
-                    let (d, t) = (job.done.load(Ordering::Relaxed), job.total.load(Ordering::Relaxed));
-                    let pct = (d * 100).checked_div(t).map_or("…".to_string(), |v| format!("{v}%"));
-                    format!("{} {pct}", tr(lang, "ollama_pulling"))
-                }
-                None => size.to_string(),
-            };
-            srow(ui, &pal, tag, &sub, None, |ui| {
-                if let Some(job) = pulling {
-                    if crate::widgets::text_link(ui, &pal, tr(lang, "cancel")).clicked() {
-                        job.cancel.store(true, Ordering::Relaxed);
-                    }
-                } else if let Some(name) = installed {
-                    let chosen = *name == current;
-                    if icon_choice(ui, &pal, Glyph::Check, chosen, tr(lang, "choose")).clicked() && !chosen {
-                        choose = Some(name.clone());
-                    }
-                } else if icon_action(ui, &pal, Glyph::Download, tr(lang, "meeting_download"), busy.then_some(pal.text_faint))
-                    .clicked()
-                    && !busy
-                {
-                    start = Some(tag);
-                }
-            });
-        }
-        if let Some(m) = choose {
-            self.prefs.ai.set_model(m);
-        }
-        if let Some(m) = start {
-            self.start_pull(m);
         }
     }
 

@@ -2,6 +2,21 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.5.6 (2026-11-26)
+
+### Added
+- Dropping a file on a page shows a line with a dot where the link will land.
+- The sidebar sections (Favorites, Pages, Templates, Meeting notes) fold and unfold, and remember it.
+- Every built-in meeting note template is now a page in Meeting notes, so it can be edited, copied or deleted. The meeting block lists them, with "Manage note templates…" at the end of the menu.
+- The AI model menu also offers to download a suggested local model and to remove an installed one.
+
+### Changed
+- The Reminders and Graph shortcuts are gone from the sidebar.
+- "Turn into" menus tick the current block type.
+- The small pencil next to the reset icon is gone.
+- /page adds a sub-page listed in the Sub-pages section, without a link in the body.
+- Settings rows no longer draw outside the window when scrolled.
+
 ## 0.5.5 (2026-11-26)
 
 ### Added

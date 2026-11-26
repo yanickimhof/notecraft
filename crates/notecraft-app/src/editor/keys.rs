@@ -1036,6 +1036,19 @@ impl EditorState {
                         last_section = section;
                         let selected = k == slash.selected.min(items.len() - 1);
                         let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
+                        // "turn into": the block's current type is marked
+                        let current_kind = slash.mode == SlashMode::TurnInto
+                            && kind_for(it.key).as_ref() == Some(&blocks[i].kind);
+                        if current_kind {
+                            ui.painter().rect_filled(r, CornerRadius::same(6), pal.accent_soft);
+                            ui.painter().text(
+                                r.right_center() - Vec2::new(12.0, 0.0),
+                                Align2::RIGHT_CENTER,
+                                "\u{2713}",
+                                FontId::proportional(14.0),
+                                pal.accent,
+                            );
+                        }
                         if selected {
                             ui.painter().rect_filled(r, CornerRadius::same(6), pal.hover);
                             if ui.input(|i| i.key_pressed(Key::ArrowDown) || i.key_pressed(Key::ArrowUp)) {
@@ -1194,6 +1207,16 @@ impl EditorState {
                                 for it in items {
                                     let (r, resp) =
                                         ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
+                                    if kind_for(it.key).as_ref() == Some(&blocks[i].kind) {
+                                        ui.painter().rect_filled(r, CornerRadius::same(6), pal.accent_soft);
+                                        ui.painter().text(
+                                            r.right_center() - Vec2::new(10.0, 0.0),
+                                            Align2::RIGHT_CENTER,
+                                            "\u{2713}",
+                                            FontId::proportional(14.0),
+                                            pal.accent,
+                                        );
+                                    }
                                     if resp.hovered() {
                                         ui.painter().rect_filled(r, CornerRadius::same(6), pal.hover);
                                     }

@@ -410,6 +410,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("meeting_model_ready", "ready", "prêt"),
     ("meeting_download_failed", "Download failed", "Échec du téléchargement"),
     ("meeting_manage_templates", "Manage note templates…", "Gérer les modèles de notes…"),
+    ("drop_here", "The file goes here", "Le fichier sera déposé ici"),
     ("templates_notes", "Meeting notes", "Notes de réunion"),
     ("templates_none", "No templates yet: press + to create them.", "Aucun modèle : appuyez sur + pour les créer."),
     ("meeting_reset", "Reset", "Réinitialiser"),

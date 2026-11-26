@@ -37,6 +37,8 @@ pub struct MeetingPrefs {
     pub auto_notes: bool,
     /// Names, projects and jargon the speech model should spell right (commas or lines).
     pub vocabulary: String,
+    /// The built-in note templates have been written as pages (so they can be edited).
+    pub notes_seeded: bool,
     /// Speech engine: "auto" (Parakeet for English when it is downloaded), "whisper" or "parakeet".
     pub engine: String,
 }
@@ -53,6 +55,7 @@ impl Default for MeetingPrefs {
             auto_notes: true,
             vocabulary: String::new(),
             engine: "auto".into(),
+            notes_seeded: false,
         }
     }
 }
@@ -308,7 +311,7 @@ impl NcApp {
             model_ready: model.installed(),
             model_label: model.label.to_string(),
             model_mb: model.size_mb,
-            template: self.prefs.meeting.template.clone(),
+            template: self.effective_template(),
             custom_templates: self.ws.as_ref().map(crate::app::note_templates).unwrap_or_default(),
             error: m.error.clone(),
             mic_help: m.mic_help,
@@ -320,6 +323,23 @@ impl NcApp {
             source: self.prefs.meeting.source.clone(),
             language: self.prefs.meeting.language.clone(),
         }
+    }
+
+    /// The template to use: a built-in one that has been written as a page (and maybe edited) is that page.
+    pub fn effective_template(&self) -> String {
+        let t = &self.prefs.meeting.template;
+        if t.starts_with("page:") {
+            return t.clone();
+        }
+        let label = template_label(self.prefs.lang, t);
+        self.ws
+            .as_ref()
+            .map(crate::app::note_templates)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(_, n)| n == label)
+            .map(|(k, _)| k)
+            .unwrap_or_else(|| t.clone())
     }
 
     /// Re-reads the list of microphones now and then (headphones come and go).
@@ -606,8 +626,9 @@ impl NcApp {
                 .unwrap_or_default();
             (t, now_label())
         };
-        let (tpl, custom) = if prefs.template.starts_with("page:") {
-            match self.ws.as_ref().and_then(|ws| crate::app::note_template_text(ws, &prefs.template)) {
+        let effective = self.effective_template();
+        let (tpl, custom) = if effective.starts_with("page:") {
+            match self.ws.as_ref().and_then(|ws| crate::app::note_template_text(ws, &effective)) {
                 Some(t) => (
                     "custom".to_string(),
                     format!(

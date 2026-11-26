@@ -85,6 +85,11 @@ pub fn build_prompt(action: &AiAction, title: &str, page_markdown: &str, selecti
 pub const NOTE_TEMPLATES: &[&str] =
     &["summary", "minutes", "actions", "one_on_one", "interview", "lecture", "sales", "custom"];
 
+/// The instructions of a built-in note template (used to write them as editable pages).
+pub fn note_structure_text(key: &str) -> &'static str {
+    note_structure(key)
+}
+
 /// What the notes should contain for a template.
 fn note_structure(key: &str) -> &'static str {
     match key {

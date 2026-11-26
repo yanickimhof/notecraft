@@ -717,15 +717,9 @@ impl NcApp {
             let pal = self.pal;
             let screen = ctx.content_rect();
             let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::unique("drop-overlay")));
-            painter.rect_filled(screen, 0.0, Color32::from_black_alpha(40));
-            painter.rect_stroke(screen.shrink(12.0), 12.0, Stroke::new(2.0, pal.accent), egui::StrokeKind::Inside);
-            painter.text(
-                screen.center(),
-                egui::Align2::CENTER_CENTER,
-                self.t("drop_files"),
-                egui::FontId::proportional(22.0),
-                Color32::WHITE,
-            );
+            // no veil and no text over the page: the editor draws a line where the file will land
+            painter.rect_stroke(screen.shrink(8.0), 12.0, Stroke::new(2.0, pal.accent), egui::StrokeKind::Inside);
+            ctx.request_repaint();
         }
         let dropped: Vec<PathBuf> =
             ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| p.is_file()).collect());
