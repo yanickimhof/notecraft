@@ -14,7 +14,7 @@ fn is_templates_title(t: &str) -> bool {
 }
 
 /// The id of the top level templates page.
-fn templates_root(ws: &Workspace) -> Option<String> {
+pub fn templates_root(ws: &Workspace) -> Option<String> {
     ws.children(None).into_iter().find_map(|c| match c.doc {
         DocId::Page(id) if is_templates_title(&c.title) => Some(id),
         _ => None,

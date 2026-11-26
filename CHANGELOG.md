@@ -2,6 +2,15 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.5.5 (2026-11-26)
+
+### Added
+- A Templates section in the sidebar, under Pages: page templates, then the templates for meeting notes. The + creates a page template.
+- The meeting block chooses the kind of meeting (note template) before recording, with small frameless menus for what is recorded, the language, the microphone and the template. A small icon in the corner puts the settings back to their defaults.
+
+### Changed
+- The New database entry is gone from the sidebar (the / menu still creates databases).
+
 ## 0.5.4 (2026-11-26)
 
 ### Added

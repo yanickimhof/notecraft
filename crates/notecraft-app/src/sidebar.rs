@@ -5,7 +5,6 @@ use crate::app::{NcApp, Target};
 use crate::i18n::tr;
 use crate::icons::Icon;
 use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Id, RichText, Sense, Stroke, Ui, Vec2};
-use notecraft_core::database::ViewKind;
 use notecraft_core::workspace::TreeItem;
 use notecraft_core::DocId;
 
@@ -215,15 +214,41 @@ impl NcApp {
                 if top.is_empty() {
                     ui.label(RichText::new(tr(lang, "no_pages")).size(13.0).color(pal.text_faint));
                 }
+                let troot = self.ws.as_ref().and_then(crate::app::templates_root);
                 for item in top {
+                    // the templates have a section of their own
+                    if troot.as_deref() == Some(item.doc.id()) {
+                        continue;
+                    }
                     self.tree(ui, &item, 0, &mut drop, &mut nav);
                 }
-                ui.add_space(6.0);
-                if nav_item(ui, &pal, Icon::Table, tr(lang, "new_database"), None).clicked() {
-                    if let Some(id) = self.new_database(None, ViewKind::Table) {
-                        nav = Some(DocId::Database(id));
-                        self.focus_title = true;
+                ui.add_space(10.0);
+                let (_, add_tpl) = section_with_add(ui, &pal, tr(lang, "templates"));
+                if add_tpl {
+                    self.ensure_templates();
+                    if let Some(root) = self.ws.as_ref().and_then(crate::app::templates_root) {
+                        self.new_page(Some(root));
                     }
+                }
+                if let Some(root) = troot {
+                    let group = self.ws.as_ref().and_then(crate::app::notes_group);
+                    let kids = self.ws.as_ref().map(|w| w.children(Some(&root))).unwrap_or_default();
+                    for k in kids.iter().filter(|k| Some(k.doc.id()) != group.as_deref()) {
+                        self.tree(ui, k, 0, &mut drop, &mut nav);
+                    }
+                    if let Some(g) = group {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(6.0);
+                            ui.label(RichText::new(tr(lang, "templates_notes")).size(12.0).color(pal.text_faint));
+                        });
+                        let notes = self.ws.as_ref().map(|w| w.children(Some(&g))).unwrap_or_default();
+                        for k in notes {
+                            self.tree(ui, &k, 0, &mut drop, &mut nav);
+                        }
+                    }
+                } else {
+                    ui.label(RichText::new(tr(lang, "templates_none")).size(12.5).color(pal.text_faint));
                 }
             },
         );

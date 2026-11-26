@@ -552,6 +552,26 @@ pub fn insert_at_char(s: &str, at: usize, ins: &str) -> String {
     format!("{}{}{}", &s[..a], ins, &s[a..])
 }
 
+/// A small text menu without frame: the current choice and a caret, the other choices when opened.
+fn quiet_menu(ui: &mut Ui, pal: &theme::Palette, label: &str, items: &[(String, String)], current: &str, tip: &str) -> Option<String> {
+    let mut pick = None;
+    ui.scope(|ui| {
+        let w = &mut ui.visuals_mut().widgets;
+        w.inactive.weak_bg_fill = Color32::TRANSPARENT;
+        w.inactive.bg_stroke = Stroke::NONE;
+        let r = ui.menu_button(RichText::new(format!("{label} \u{25be}")).size(12.5).color(pal.text_secondary), |ui| {
+            for (id, l) in items {
+                if ui.selectable_label(current == id, l).clicked() {
+                    pick = Some(id.clone());
+                    ui.close();
+                }
+            }
+        });
+        r.response.on_hover_text(tip);
+    });
+    pick
+}
+
 fn text_id(block: u64) -> Id {
     Id::unique(("nc-block", block))
 }
@@ -2085,9 +2105,9 @@ impl EditorState {
                             } else if other_busy {
                                 ui.label(RichText::new(tr(lang, "meeting_busy")).color(pal.text_faint));
                             } else {
-                                ui.horizontal_wrapped(|ui| {
-                                    use crate::widgets::{cycle, icon_choice, text_link, Glyph};
-                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                ui.horizontal(|ui| {
+                                    use crate::widgets::text_link;
+                                    ui.spacing_mut().item_spacing.x = 4.0;
                                     let label = if has_transcript {
                                         tr(lang, "meeting_resume")
                                     } else {
@@ -2103,86 +2123,82 @@ impl EditorState {
                                     if ui.add(start).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                                         act = Some(crate::meeting::MeetingAction::Start(bid));
                                     }
-                                    ui.add_space(6.0);
-                                    for (id, g, k) in [
-                                        ("mic", Glyph::Mic, "meeting_src_mic"),
-                                        ("system", Glyph::Speaker, "meeting_src_sys"),
-                                        ("both", Glyph::Both, "meeting_src_both"),
-                                    ] {
-                                        if icon_choice(ui, pal, g, v.source == id, tr(lang, k)).clicked()
-                                            && v.source != id
-                                        {
-                                            act = Some(crate::meeting::MeetingAction::SetSource(id.to_string()));
-                                        }
-                                    }
-                                    let langs = [
-                                        (
-                                            "auto".to_string(),
-                                            Glyph::Code("AUTO"),
-                                            tr(lang, "meeting_lang_auto").to_string(),
-                                        ),
-                                        ("fr".to_string(), Glyph::Code("FR"), tr(lang, "meeting_lang_fr").to_string()),
-                                        ("en".to_string(), Glyph::Code("EN"), tr(lang, "meeting_lang_en").to_string()),
-                                    ];
-                                    let mut cur = v.language.clone();
-                                    if cycle(ui, pal, &mut cur, &langs, false) {
-                                        act = Some(crate::meeting::MeetingAction::SetLanguage(cur));
-                                    }
-                                    let short = |s: &str| -> String {
-                                        if s.chars().count() > 24 {
-                                            format!("{}…", s.chars().take(23).collect::<String>())
+                                    ui.add_space(8.0);
+                                    let short = |s: &str, n: usize| -> String {
+                                        if s.chars().count() > n {
+                                            format!("{}…", s.chars().take(n - 1).collect::<String>())
                                         } else {
                                             s.to_string()
                                         }
                                     };
+                                    // what is recorded
+                                    let sources = [
+                                        ("mic".to_string(), tr(lang, "meeting_src_mic").to_string()),
+                                        ("system".to_string(), tr(lang, "meeting_src_sys").to_string()),
+                                        ("both".to_string(), tr(lang, "meeting_src_both").to_string()),
+                                    ];
+                                    let cur = sources.iter().find(|(k, _)| *k == v.source).map(|(_, l)| l.clone());
+                                    if let Some(k) = quiet_menu(
+                                        ui,
+                                        pal,
+                                        &cur.unwrap_or_default(),
+                                        &sources,
+                                        &v.source,
+                                        tr(lang, "meeting_source"),
+                                    ) {
+                                        act = Some(crate::meeting::MeetingAction::SetSource(k));
+                                    }
+                                    // spoken language
+                                    let langs = [
+                                        ("auto".to_string(), tr(lang, "meeting_lang_auto").to_string()),
+                                        ("fr".to_string(), tr(lang, "meeting_lang_fr").to_string()),
+                                        ("en".to_string(), tr(lang, "meeting_lang_en").to_string()),
+                                    ];
+                                    let cur = match v.language.as_str() {
+                                        "fr" => "FR",
+                                        "en" => "EN",
+                                        _ => tr(lang, "meeting_lang_auto_s"),
+                                    };
+                                    if let Some(k) =
+                                        quiet_menu(ui, pal, cur, &langs, &v.language, tr(lang, "meeting_spoken_language"))
+                                    {
+                                        act = Some(crate::meeting::MeetingAction::SetLanguage(k));
+                                    }
+                                    // microphone
                                     if v.source != "system" {
                                         let default_label = match &v.default_mic {
-                                            Some(d) => format!("{} ({d})", tr(lang, "meeting_mic_default")),
+                                            Some(d) => format!("{} ({})", tr(lang, "meeting_mic_default"), short(d, 28)),
                                             None => tr(lang, "meeting_mic_default").to_string(),
                                         };
-                                        let mut opts: Vec<(String, Glyph, String)> =
-                                            vec![(String::new(), Glyph::None, short(&default_label))];
-                                        for m in &v.mics {
-                                            opts.push((m.clone(), Glyph::None, short(m)));
-                                        }
-                                        let mut cur = v.microphone.clone();
-                                        if cycle(ui, pal, &mut cur, &opts, true) {
-                                            act = Some(crate::meeting::MeetingAction::SetMicrophone(cur));
+                                        let mut mics = vec![(String::new(), default_label)];
+                                        mics.extend(v.mics.iter().map(|m| (m.clone(), m.clone())));
+                                        let cur = if v.microphone.is_empty() {
+                                            tr(lang, "meeting_mic_default").to_string()
+                                        } else {
+                                            short(&v.microphone, 20)
+                                        };
+                                        if let Some(k) =
+                                            quiet_menu(ui, pal, &cur, &mics, &v.microphone, tr(lang, "meeting_microphone"))
+                                        {
+                                            act = Some(crate::meeting::MeetingAction::SetMicrophone(k));
                                         }
                                     }
+                                    // the kind of meeting: how the notes will be written
+                                    let mut tpls: Vec<(String, String)> = notecraft_ai::NOTE_TEMPLATES
+                                        .iter()
+                                        .map(|k| ((*k).to_string(), crate::meeting::template_label(lang, k).to_string()))
+                                        .collect();
+                                    tpls.extend(v.custom_templates.iter().cloned());
+                                    let cur = tpls
+                                        .iter()
+                                        .find(|(k, _)| *k == v.template)
+                                        .map(|(_, l)| short(l, 24))
+                                        .unwrap_or_default();
+                                    if let Some(k) = quiet_menu(ui, pal, &cur, &tpls, &v.template, tr(lang, "meeting_template")) {
+                                        act = Some(crate::meeting::MeetingAction::SetTemplate(k));
+                                    }
                                     if has_transcript {
-                                        let cur_label = match v.custom_templates.iter().find(|(k, _)| *k == v.template) {
-                                            Some((_, t)) => t.clone(),
-                                            None => crate::meeting::template_label(lang, &v.template).to_string(),
-                                        };
-                                        ui.menu_button(RichText::new(format!("{cur_label} \u{25be}")).size(13.0), |ui| {
-                                            for k in notecraft_ai::NOTE_TEMPLATES {
-                                                if ui
-                                                    .selectable_label(
-                                                        v.template == *k,
-                                                        crate::meeting::template_label(lang, k),
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    act = Some(crate::meeting::MeetingAction::SetTemplate((*k).to_string()));
-                                                    ui.close();
-                                                }
-                                            }
-                                            if !v.custom_templates.is_empty() {
-                                                ui.separator();
-                                                for (k, t) in &v.custom_templates {
-                                                    if ui.selectable_label(v.template == *k, t).clicked() {
-                                                        act = Some(crate::meeting::MeetingAction::SetTemplate(k.clone()));
-                                                        ui.close();
-                                                    }
-                                                }
-                                            }
-                                            ui.separator();
-                                            if ui.button(tr(lang, "meeting_manage_templates")).clicked() {
-                                                act = Some(crate::meeting::MeetingAction::ManageTemplates);
-                                                ui.close();
-                                            }
-                                        });
+                                        ui.add_space(6.0);
                                         let l = if has_notes {
                                             tr(lang, "meeting_rewrite_notes")
                                         } else {
@@ -2192,9 +2208,31 @@ impl EditorState {
                                             act = Some(crate::meeting::MeetingAction::Notes(bid));
                                         }
                                     }
-                                    if text_link(ui, pal, tr(lang, "meeting_reset")).clicked() {
-                                        act = Some(crate::meeting::MeetingAction::ResetSettings);
-                                    }
+                                    // a small icon in the corner: back to the default settings
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        let r = ui
+                                            .add(
+                                                egui::Button::new(RichText::new("\u{21ba}").size(14.0).color(pal.text_faint))
+                                                    .frame(false),
+                                            )
+                                            .on_hover_text(tr(lang, "meeting_reset"));
+                                        if r.clicked() {
+                                            act = Some(crate::meeting::MeetingAction::ResetSettings);
+                                        }
+                                        {
+                                            let m = ui
+                                                .add(
+                                                    egui::Button::new(
+                                                        RichText::new("\u{270e}").size(13.0).color(pal.text_faint),
+                                                    )
+                                                    .frame(false),
+                                                )
+                                                .on_hover_text(tr(lang, "meeting_manage_templates"));
+                                            if m.clicked() {
+                                                act = Some(crate::meeting::MeetingAction::ManageTemplates);
+                                            }
+                                        }
+                                    });
                                 });
                             }
                             if let (Some(j), true) =
