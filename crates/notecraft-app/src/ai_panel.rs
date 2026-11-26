@@ -63,6 +63,8 @@ pub struct AiPrefs {
     pub claude_model: String,
     pub openai_model: String,
     pub grok_model: String,
+    /// Allows an Ollama that is not on this Mac (only by editing the preferences file).
+    pub allow_remote_ollama: bool,
 }
 
 impl Default for AiPrefs {
@@ -74,6 +76,7 @@ impl Default for AiPrefs {
             claude_model: notecraft_ai::DEFAULT_CLAUDE_MODEL.into(),
             openai_model: notecraft_ai::DEFAULT_OPENAI_MODEL.into(),
             grok_model: notecraft_ai::DEFAULT_GROK_MODEL.into(),
+            allow_remote_ollama: false,
         }
     }
 }

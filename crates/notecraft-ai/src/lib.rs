@@ -160,14 +160,33 @@ impl Engine {
 
 /// `localhost`, `127.x.x.x` or `[::1]`.
 pub fn is_local_url(url: &str) -> bool {
-    let rest = url.split("://").nth(1).unwrap_or(url);
+    let rest = url.trim().split("://").nth(1).unwrap_or(url.trim());
     let host = rest.split(['/', '?']).next().unwrap_or("");
+    let host = host.rsplit('@').next().unwrap_or("");
     let host = if host.starts_with('[') {
         host.split(']').next().unwrap_or("").trim_start_matches('[')
     } else {
         host.split(':').next().unwrap_or("")
     };
-    host == "localhost" || host.starts_with("127.") || host == "::1"
+    // a real loopback address, never a name that merely starts with "127."
+    host.eq_ignore_ascii_case("localhost")
+        || host.parse::<std::net::IpAddr>().map(|ip| ip.is_loopback()).unwrap_or(false)
+}
+
+static ALLOW_REMOTE_OLLAMA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Lets the app talk to an Ollama that is not on this Mac (off by default, set from the preferences file).
+pub fn set_allow_remote_ollama(on: bool) {
+    ALLOW_REMOTE_OLLAMA.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Network guard: the local engine only talks to this Mac unless the user allowed otherwise.
+fn guard_local(url: &str) -> Result<(), AiError> {
+    if is_local_url(url) || ALLOW_REMOTE_OLLAMA.load(std::sync::atomic::Ordering::Relaxed) {
+        Ok(())
+    } else {
+        Err(AiError::RemoteBlocked(url.trim().to_string()))
+    }
 }
 
 /// How long to wait.
@@ -193,6 +212,8 @@ pub enum AiError {
         installed: Vec<String>,
     },
     NoModel,
+    /// The Ollama address is not on this Mac and remote use was not allowed.
+    RemoteBlocked(String),
     NoApiKey,
     InvalidKey,
     RateLimited,
@@ -205,6 +226,10 @@ pub enum AiError {
 impl std::fmt::Display for AiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            AiError::RemoteBlocked(url) => write!(
+                f,
+                "{url} is not on this Mac. Local models only talk to this Mac: use http://localhost:11434, or allow remote Ollama in the preferences file."
+            ),
             AiError::OllamaNotRunning(url) => {
                 write!(f, "Ollama isn't running at {url}. Open the Ollama app (or run `ollama serve`) and try again.")
             }
@@ -323,6 +348,7 @@ pub fn ollama_installed() -> bool {
 
 /// Models installed in Ollama (`GET /api/tags`). Never downloads anything.
 pub fn ollama_models(url: &str, t: Timeouts) -> Result<Vec<String>, AiError> {
+    guard_local(url)?;
     let base = trim_url(url);
     let mut resp = agent(t).get(format!("{base}/api/tags")).call().map_err(|e| map_err(e, Some(&base)))?;
     let status = resp.status().as_u16();
@@ -343,6 +369,7 @@ pub fn ollama_models(url: &str, t: Timeouts) -> Result<Vec<String>, AiError> {
 
 /// Removes a model from Ollama (`DELETE /api/delete`).
 pub fn ollama_delete(url: &str, model: &str) -> Result<(), AiError> {
+    guard_local(url)?;
     let base = trim_url(url);
     let t = Timeouts { connect: Duration::from_secs(4), total: Duration::from_secs(30) };
     let resp = agent(t)
@@ -360,6 +387,7 @@ pub fn ollama_delete(url: &str, model: &str) -> Result<(), AiError> {
 /// `progress(done, total)` is called as bytes arrive and returns false to stop.
 pub fn ollama_pull(url: &str, model: &str, mut progress: impl FnMut(u64, u64) -> bool) -> Result<(), AiError> {
     use std::io::BufRead;
+    guard_local(url)?;
     let base = trim_url(url);
     let t = Timeouts { connect: Duration::from_secs(4), total: Duration::from_secs(4 * 3600) };
     let mut resp = agent(t)
@@ -581,6 +609,7 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
             if model.trim().is_empty() {
                 return Err(AiError::NoModel);
             }
+            guard_local(url)?;
             let base = trim_url(url);
             let mut resp = agent(t)
                 .post(format!("{base}/api/chat"))
@@ -644,6 +673,16 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_local_guard_refuses_look_alike_hosts() {
+        assert!(is_local_url("http://localhost:11434"));
+        assert!(is_local_url("http://127.0.0.1:11434"));
+        assert!(is_local_url("http://[::1]:11434"));
+        assert!(!is_local_url("http://127.evil.example.com"));
+        assert!(!is_local_url("http://localhost@evil.example.com"));
+        assert!(!is_local_url("http://192.168.1.20:11434"));
+    }
+
     #[test]
     fn models_are_grouped_by_family_newest_first() {
         let v: Vec<String> = [

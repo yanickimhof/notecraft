@@ -85,6 +85,9 @@ impl NcApp {
                                 if let Target::Template(db, t) = &target {
                                     self.row_props_ui(ui, db, t, true);
                                 }
+                                if let Target::Doc(DocId::Page(id)) = &target {
+                                    self.restore_default_template_ui(ui, id);
+                                }
                                 self.editor_ui(ui, &target);
                                 if let Target::Doc(DocId::Page(id)) = &target {
                                     let id = id.clone();
@@ -100,6 +103,35 @@ impl NcApp {
     }
 
     /// Links to the sub-pages of a page, listed below its content.
+    /// On a built-in note template (a page of the Meeting notes group): a link to put the original text back.
+    fn restore_default_template_ui(&mut self, ui: &mut Ui, id: &str) {
+        let Some(ws) = self.ws.as_ref() else { return };
+        let doc = DocId::Page(id.to_string());
+        let in_group = match (ws.parent(&doc), crate::app::notes_group(ws)) {
+            (Some(DocId::Page(p)), Some(g)) => p == g,
+            _ => false,
+        };
+        if !in_group {
+            return;
+        }
+        let title = ws.title(&doc);
+        let key = notecraft_ai::NOTE_TEMPLATES.iter().filter(|k| **k != "custom").find(|k| {
+            [crate::i18n::Lang::En, crate::i18n::Lang::Fr].iter().any(|l| crate::meeting::template_label(*l, k) == title)
+        });
+        let Some(key) = key else { return };
+        let pal = self.pal;
+        let label = self.t("template_restore").to_string();
+        ui.horizontal(|ui| {
+            ui.add_space(GUTTER);
+            if crate::widgets::text_link(ui, &pal, &label).clicked() {
+                if let Some(b) = self.ws.as_mut().and_then(|w| w.blocks_mut(&doc)) {
+                    *b = vec![notecraft_core::Block::paragraph(notecraft_ai::note_structure_text(key))];
+                    self.mark_dirty();
+                }
+            }
+        });
+    }
+
     fn subpages_ui(&mut self, ui: &mut Ui, id: &str) {
         let pal = self.pal;
         let lang = self.prefs.lang;

@@ -2,6 +2,18 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.5.7 (2026-11-26)
+
+### Added
+- A lock in the AI settings: closed (default), the local model only talks to this Mac; open and red, any address is allowed. An address that is not on this Mac is refused while the lock is closed.
+- A link on the built-in note templates puts back their original text.
+- Removing a local model asks for a second click.
+
+### Changed
+- The meeting card moved out of the editor into its own module, a first step of the editor clean-up.
+- The note templates are read once a second instead of at every frame, and writing them is attempted once.
+- Look-alike hosts such as 127.evil.example.com are no longer taken for this Mac.
+
 ## 0.5.6 (2026-11-26)
 
 ### Added

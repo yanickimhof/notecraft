@@ -895,10 +895,24 @@ impl NcApp {
                         }
                         if !models.is_empty() {
                             ui.menu_button(tr(lang, "remove"), |ui| {
+                                // two clicks: the first asks, the second removes
+                                let cid = Id::unique("confirm-delete-model");
+                                let pending: Option<String> = ui.data(|d| d.get_temp(cid));
                                 for m in &models {
-                                    if ui.button(m).clicked() {
-                                        delete_model = Some(m.clone());
-                                        ui.close();
+                                    let asked = pending.as_deref() == Some(m.as_str());
+                                    let label = if asked {
+                                        format!("{} {m}", tr(lang, "model_delete_confirm"))
+                                    } else {
+                                        m.clone()
+                                    };
+                                    if ui.button(label).clicked() {
+                                        if asked {
+                                            delete_model = Some(m.clone());
+                                            ui.data_mut(|d| d.remove::<String>(cid));
+                                            ui.close();
+                                        } else {
+                                            ui.data_mut(|d| d.insert_temp(cid, m.clone()));
+                                        }
                                     }
                                 }
                             });
@@ -913,6 +927,30 @@ impl NcApp {
                 }
             }
         });
+        if local {
+            // network lock: closed = the local engine only talks to this Mac; open (red) = any address is allowed
+            let open = self.prefs.ai.allow_remote_ollama;
+            let (title, sub, color) = if open {
+                (tr(lang, "ollama_lock_open"), tr(lang, "ollama_lock_open_sub"), Some(pal.danger))
+            } else {
+                (tr(lang, "ollama_lock_closed"), tr(lang, "ollama_lock_closed_sub"), None)
+            };
+            let mut toggled = false;
+            srow(ui, &pal, title, sub, color, |ui| {
+                let (glyph, col) = if open { ("\u{1F513}", pal.danger) } else { ("\u{1F512}", pal.text_secondary) };
+                let r = ui.add(egui::Button::new(RichText::new(glyph).size(16.0).color(col)).frame(false));
+                toggled = r.on_hover_text(tr(lang, "ollama_lock_tip")).clicked();
+            });
+            if toggled {
+                self.prefs.ai.allow_remote_ollama = !open;
+                if open && !notecraft_ai::is_local_url(&self.prefs.ai.ollama_url) {
+                    // closing the lock on a remote address: back to this Mac
+                    self.prefs.ai.ollama_url = notecraft_ai::DEFAULT_OLLAMA_URL.into();
+                }
+                self.ai.models_error = None;
+                self.refresh_models();
+            }
+        }
         if let Some(m) = pull_start {
             self.start_pull(&m);
         }

@@ -87,7 +87,9 @@ impl NcApp {
     pub fn ensure_templates(&mut self) {
         let fr = self.prefs.lang == Lang::Fr;
         let Some(ws) = self.ws.as_mut() else { return };
-        if templates_root(ws).is_some() && notes_group(ws).is_some() && self.prefs.meeting.notes_seeded {
+        if templates_root(ws).is_some() && notes_group(ws).is_some() && self.prefs.meeting.notes_seeded
+            || self.prefs.meeting.seed_failed
+        {
             return;
         }
         let result = (|| -> notecraft_core::Result<()> {
@@ -169,7 +171,10 @@ impl NcApp {
                 self.prefs.meeting.notes_seeded = true;
                 self.prefs.meeting.template = self.effective_template();
             }
-            Err(e) => self.notify(e.to_string()),
+            Err(e) => {
+                self.prefs.meeting.seed_failed = true;
+                self.notify(e.to_string());
+            }
         }
     }
 

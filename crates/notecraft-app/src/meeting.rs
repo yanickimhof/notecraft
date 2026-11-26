@@ -39,6 +39,9 @@ pub struct MeetingPrefs {
     pub vocabulary: String,
     /// The built-in note templates have been written as pages (so they can be edited).
     pub notes_seeded: bool,
+    /// Writing the templates failed this session: do not try again at every frame.
+    #[serde(skip)]
+    pub seed_failed: bool,
     /// Speech engine: "auto" (Parakeet for English when it is downloaded), "whisper" or "parakeet".
     pub engine: String,
 }
@@ -56,6 +59,7 @@ impl Default for MeetingPrefs {
             vocabulary: String::new(),
             engine: "auto".into(),
             notes_seeded: false,
+            seed_failed: false,
         }
     }
 }
@@ -155,6 +159,9 @@ struct DownloadJob {
     rx: Receiver<Result<(), String>>,
 }
 
+/// When the note templates were last read, and what was read.
+type TemplateCache = (Instant, Vec<(String, String)>);
+
 #[derive(Default)]
 pub struct MeetingState {
     session: Option<Session>,
@@ -169,6 +176,8 @@ pub struct MeetingState {
     mics: Vec<String>,
     default_mic: Option<String>,
     mics_checked: Option<Instant>,
+    /// The note templates, re-read from the workspace at most once a second.
+    tpl_cache: std::cell::RefCell<Option<TemplateCache>>,
 }
 
 // ------------------------------------------------------------ pure helpers
@@ -312,7 +321,7 @@ impl NcApp {
             model_label: model.label.to_string(),
             model_mb: model.size_mb,
             template: self.effective_template(),
-            custom_templates: self.ws.as_ref().map(crate::app::note_templates).unwrap_or_default(),
+            custom_templates: self.cached_note_templates(),
             error: m.error.clone(),
             mic_help: m.mic_help,
             audio_help: m.audio_help,
@@ -328,18 +337,29 @@ impl NcApp {
     /// The template to use: a built-in one that has been written as a page (and maybe edited) is that page.
     pub fn effective_template(&self) -> String {
         let t = &self.prefs.meeting.template;
-        if t.starts_with("page:") {
+        // once the built-in templates are pages, the stored key is final: no lookup by name
+        if t.starts_with("page:") || self.prefs.meeting.notes_seeded {
             return t.clone();
         }
         let label = template_label(self.prefs.lang, t);
-        self.ws
-            .as_ref()
-            .map(crate::app::note_templates)
-            .unwrap_or_default()
+        self.cached_note_templates()
             .into_iter()
             .find(|(_, n)| n == label)
             .map(|(k, _)| k)
             .unwrap_or_else(|| t.clone())
+    }
+
+    /// The note templates of the workspace, cached for a second (the meeting block asks at every frame).
+    pub fn cached_note_templates(&self) -> Vec<(String, String)> {
+        let mut c = self.meeting.tpl_cache.borrow_mut();
+        if let Some((at, v)) = c.as_ref() {
+            if at.elapsed() < Duration::from_secs(1) {
+                return v.clone();
+            }
+        }
+        let v = self.ws.as_ref().map(crate::app::note_templates).unwrap_or_default();
+        *c = Some((Instant::now(), v.clone()));
+        v
     }
 
     /// Re-reads the list of microphones now and then (headphones come and go).

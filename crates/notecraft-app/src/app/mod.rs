@@ -1033,6 +1033,7 @@ impl NcApp {
 impl eframe::App for NcApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let _timer = FrameTimer::start();
+        notecraft_ai::set_allow_remote_ollama(self.prefs.ai.allow_remote_ollama);
         let ctx = ui.ctx().clone();
         let dark = match self.prefs.theme {
             ThemeChoice::Dark => true,
