@@ -3450,6 +3450,7 @@ dependencies = [
 name = "notecraft-app"
 version = "0.5.0"
 dependencies = [
+ "arboard",
  "eframe",
  "egui_extras",
  "egui_kittest",

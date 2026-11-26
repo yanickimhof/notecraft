@@ -16,6 +16,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - A four step assistant at first launch: welcome and language (taken from macOS), folder, AI and meetings, with an optional speech model download. Nothing is downloaded without a click.
 - Images can be resized (drag a corner handle) and aligned left, centre or right; size and place are kept on the published page.
 - Mermaid diagrams and equations appear as pictures on published pages and in the preview.
+- Pasting from Outlook, Word or a web page keeps headings, lists, bold, links and tables.
+- Database tables: drag a column edge to resize it, long text wraps, and the keyboard moves between cells (arrows, Tab, Enter).
+- Command click on a link opens it.
 
 ### Changed
 - Interface refinements.

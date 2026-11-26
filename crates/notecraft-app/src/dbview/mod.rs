@@ -31,6 +31,10 @@ pub struct DbUi {
     cal: HashMap<String, (i16, i8)>,
     /// Pixels per day of each timeline view.
     tl_zoom: HashMap<String, f32>,
+    /// Row just added in a table: its title cell takes the caret.
+    focus_row: Option<String>,
+    /// Width of the column being dragged, until the mouse is released.
+    col_drag: Option<(String, f32)>,
 }
 
 /// What the database UI asks the app to do.
@@ -480,7 +484,12 @@ impl DbUi {
             }
         }
         let _ = ws.save_row(db, &rid);
-        actions.push(DbAction::Open(DocId::Row(db.to_string(), rid)));
+        if view.as_ref().is_some_and(|v| v.kind == ViewKind::Table) {
+            // in a table the new row appears in place, with the caret in its first cell
+            self.focus_row = Some(rid);
+        } else {
+            actions.push(DbAction::Open(DocId::Row(db.to_string(), rid)));
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

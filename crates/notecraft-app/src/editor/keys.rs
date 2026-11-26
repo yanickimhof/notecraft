@@ -65,20 +65,41 @@ impl EditorState {
         let caret = cursor_range(ctx, id).unwrap_or((0, 0));
         let len = char_len(&blocks[i].text);
 
-        // pasting several lines (or Markdown blocks) makes blocks instead of one long block
+        // pasting several lines (or Markdown blocks) makes blocks instead of one long block; HTML on the
+        // clipboard (Outlook, Word, a web page) keeps its structure and formatting
         if rich {
             let pasted = ctx.input(|inp| {
                 inp.events.iter().find_map(|e| match e {
-                    egui::Event::Paste(t) if t.trim().contains('\n') => Some(t.clone()),
+                    egui::Event::Paste(t) => Some(t.clone()),
                     _ => None,
                 })
             });
-            if let Some(text) = pasted {
-                let new_blocks = blocks::from_markdown(&text);
-                if new_blocks.len() > 1 {
-                    ctx.input_mut(|inp| inp.events.retain(|e| !matches!(e, egui::Event::Paste(_))));
-                    self.paste_blocks(blocks, i, caret, new_blocks, env, out);
-                    return;
+            if let Some(plain) = pasted {
+                if let Some(md) = super::richpaste::clipboard_markdown() {
+                    let new_blocks = blocks::from_markdown(&md);
+                    let simple = new_blocks.len() == 1 && matches!(new_blocks[0].kind, BlockKind::Paragraph);
+                    if new_blocks.len() > 1 || (!new_blocks.is_empty() && !simple) {
+                        ctx.input_mut(|inp| inp.events.retain(|e| !matches!(e, egui::Event::Paste(_))));
+                        self.paste_blocks(blocks, i, caret, new_blocks, env, out);
+                        return;
+                    } else if simple {
+                        // one paragraph: its bold, italics and links go in as inline formatting
+                        let text = new_blocks[0].text.clone();
+                        ctx.input_mut(|inp| {
+                            for e in inp.events.iter_mut() {
+                                if let egui::Event::Paste(t) = e {
+                                    *t = text.clone();
+                                }
+                            }
+                        });
+                    }
+                } else if plain.trim().contains('\n') {
+                    let new_blocks = blocks::from_markdown(&plain);
+                    if new_blocks.len() > 1 {
+                        ctx.input_mut(|inp| inp.events.retain(|e| !matches!(e, egui::Event::Paste(_))));
+                        self.paste_blocks(blocks, i, caret, new_blocks, env, out);
+                        return;
+                    }
                 }
             }
         }
@@ -428,6 +449,7 @@ impl EditorState {
             ctx.copy_text(blocks::to_markdown(&blocks[range_start..range_end]));
         }
         if let Some(text) = paste {
+            let text = super::richpaste::clipboard_markdown().unwrap_or(text);
             let pasted = blocks::from_markdown(&text);
             if !pasted.is_empty() {
                 let before = blocks.clone();
@@ -872,94 +894,110 @@ impl EditorState {
         let pal = env.pal;
         let screen = ctx.content_rect();
         let mut pos = egui::pos2(rect.min.x + 46.0 + blocks[i].depth as f32 * 26.0, rect.max.y + 4.0);
-        let want = 360.0f32.min(items.len().max(1) as f32 * 46.0 + 44.0);
-        // Show the menu on the side with the most room, and shrink it to fit that side
-        // (a short window used to leave room for barely one entry).
+        // The list can hold 25 entries: let the menu use most of the window (up to 580 px) so that
+        // many entries are visible at once, instead of a fixed 320 px strip.
+        let max_h = (screen.height() * 0.72).clamp(320.0, 580.0);
+        let sections = if slash.query.is_empty() { 4.0 } else { 0.0 };
+        let want = max_h.min(items.len().max(1) as f32 * 46.0 + sections * 22.0 + 44.0);
+        // Show the menu on the side with the most room. When neither side can hold a usable list,
+        // keep a minimum height and let it cover the block rather than shrinking to one entry.
+        let min_h = want.min(340.0);
         let below = screen.max.y - 10.0 - pos.y;
         let above = rect.min.y - 4.0 - 10.0;
+        // when the menu opens above the block, its bottom edge is pinned to the block
+        let mut above_anchor: Option<f32> = None;
         let h = if below >= want {
             want
         } else if above >= want {
-            pos.y = rect.min.y - want - 4.0;
+            above_anchor = Some(rect.min.y - 4.0);
             want
-        } else if below >= above {
-            below.max(120.0).min(want)
+        } else if below.max(above) >= min_h {
+            if below >= above {
+                below
+            } else {
+                above_anchor = Some(rect.min.y - 4.0);
+                above
+            }
         } else {
-            let h = above.max(120.0).min(want);
-            pos.y = (rect.min.y - h - 4.0).max(10.0);
-            h
+            pos.y = (screen.max.y - 10.0 - min_h).max(10.0);
+            min_h
         };
-        let area = egui::Area::new(Id::unique("nc-slash-menu")).order(egui::Order::Foreground).fixed_pos(pos).show(
-            ctx,
-            |ui| {
-                egui::Frame::popup(ui.style()).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
-                    ui.set_width(310.0);
-                    let title = if slash.mode == SlashMode::TurnInto {
-                        tr(env.lang, "turn_into")
-                    } else {
-                        tr(env.lang, "basic_blocks")
-                    };
-                    ui.label(RichText::new(title).size(12.0).color(pal.text_secondary));
-                    if items.is_empty() {
-                        ui.label(RichText::new(tr(env.lang, "no_results")).color(pal.text_faint));
-                        return;
-                    }
-                    egui::ScrollArea::vertical().max_height((h - 44.0).clamp(80.0, 320.0)).show(ui, |ui| {
-                        let mut last_section = "basic_blocks";
-                        for (k, it) in items.iter().enumerate() {
-                            let section = match it.key {
-                                "image" | "file" | "bookmark" => "media",
-                                "table" | "board" | "list" | "dbview" => "database_views",
-                                "group_toggle" | "group_callout" => "block_group",
-                                "meeting" => "ai_blocks",
-                                _ => "basic_blocks",
-                            };
-                            if slash.query.is_empty() && section != last_section {
-                                ui.add_space(4.0);
-                                ui.label(RichText::new(tr(env.lang, section)).size(12.0).color(pal.text_secondary));
-                            }
-                            last_section = section;
-                            let selected = k == slash.selected.min(items.len() - 1);
-                            let (r, resp) =
-                                ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
-                            if selected {
-                                ui.painter().rect_filled(r, CornerRadius::same(6), pal.hover);
-                                if ui.input(|i| i.key_pressed(Key::ArrowDown) || i.key_pressed(Key::ArrowUp)) {
-                                    resp.scroll_to_me(None);
-                                }
-                            }
-                            let mut child = ui.new_child(
-                                egui::UiBuilder::new()
-                                    .max_rect(r.shrink2(Vec2::new(6.0, 3.0)))
-                                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
-                            );
-                            // labels would take the click away from the row
-                            child.style_mut().interaction.selectable_labels = false;
-                            widgets::glyph_box(&mut child, it.glyph, pal, 36.0);
-                            child.vertical(|ui| {
-                                ui.add_space(2.0);
-                                ui.label(
-                                    RichText::new(tr(env.lang, &format!("blk_{}", it.key))).size(14.0).color(pal.text),
-                                );
-                                ui.label(
-                                    RichText::new(tr(env.lang, &format!("desc_{}", it.key)))
-                                        .size(11.5)
-                                        .color(pal.text_secondary),
-                                );
-                            });
-                            if resp.hovered() && ui.input(|i| i.pointer.delta() != Vec2::ZERO) {
-                                if let Some(s) = &mut self.slash {
-                                    s.selected = k;
-                                }
-                            }
-                            if resp.clicked() {
-                                deferred.push(Deferred::Slash(i, it.key));
+        // egui sizes a floating area at most 400 px tall the first time it shows (its default area
+        // size), whatever the content asks for: give it the height we want from the start
+        let mut area_builder = egui::Area::new(Id::unique("nc-slash-menu"))
+            .order(egui::Order::Foreground)
+            .default_size(Vec2::new(330.0, h));
+        area_builder = match above_anchor {
+            Some(y) => area_builder.pivot(egui::Align2::LEFT_BOTTOM).fixed_pos(egui::pos2(pos.x, y)),
+            None => area_builder.fixed_pos(pos),
+        };
+        let area = area_builder.show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
+                ui.set_width(310.0);
+                let title = if slash.mode == SlashMode::TurnInto {
+                    tr(env.lang, "turn_into")
+                } else {
+                    tr(env.lang, "basic_blocks")
+                };
+                ui.label(RichText::new(title).size(12.0).color(pal.text_secondary));
+                if items.is_empty() {
+                    ui.label(RichText::new(tr(env.lang, "no_results")).color(pal.text_faint));
+                    return;
+                }
+                egui::ScrollArea::vertical().max_height((h - 44.0).clamp(120.0, 560.0)).show(ui, |ui| {
+                    let mut last_section = "basic_blocks";
+                    for (k, it) in items.iter().enumerate() {
+                        let section = match it.key {
+                            "image" | "file" | "bookmark" => "media",
+                            "table" | "board" | "list" | "dbview" => "database_views",
+                            "group_toggle" | "group_callout" => "block_group",
+                            "meeting" => "ai_blocks",
+                            _ => "basic_blocks",
+                        };
+                        if slash.query.is_empty() && section != last_section {
+                            ui.add_space(4.0);
+                            ui.label(RichText::new(tr(env.lang, section)).size(12.0).color(pal.text_secondary));
+                        }
+                        last_section = section;
+                        let selected = k == slash.selected.min(items.len() - 1);
+                        let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
+                        if selected {
+                            ui.painter().rect_filled(r, CornerRadius::same(6), pal.hover);
+                            if ui.input(|i| i.key_pressed(Key::ArrowDown) || i.key_pressed(Key::ArrowUp)) {
+                                resp.scroll_to_me(None);
                             }
                         }
-                    });
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(r.shrink2(Vec2::new(6.0, 3.0)))
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                        );
+                        // labels would take the click away from the row
+                        child.style_mut().interaction.selectable_labels = false;
+                        widgets::glyph_box(&mut child, it.glyph, pal, 36.0);
+                        child.vertical(|ui| {
+                            ui.add_space(2.0);
+                            ui.label(
+                                RichText::new(tr(env.lang, &format!("blk_{}", it.key))).size(14.0).color(pal.text),
+                            );
+                            ui.label(
+                                RichText::new(tr(env.lang, &format!("desc_{}", it.key)))
+                                    .size(11.5)
+                                    .color(pal.text_secondary),
+                            );
+                        });
+                        if resp.hovered() && ui.input(|i| i.pointer.delta() != Vec2::ZERO) {
+                            if let Some(s) = &mut self.slash {
+                                s.selected = k;
+                            }
+                        }
+                        if resp.clicked() {
+                            deferred.push(Deferred::Slash(i, it.key));
+                        }
+                    }
                 });
-            },
-        );
+            });
+        });
         if area.response.clicked_elsewhere() && slash.mode == SlashMode::TurnInto {
             self.slash = None;
         }
@@ -984,9 +1022,11 @@ impl EditorState {
         let q = query.trim().to_lowercase();
         let screen = ctx.content_rect();
         let pos = egui::pos2(pos.x.min(screen.max.x - 260.0), pos.y.min(screen.max.y - 420.0).max(8.0));
-        let area = egui::Area::new(Id::unique("nc-block-menu")).order(egui::Order::Foreground).fixed_pos(pos).show(
-            ctx,
-            |ui| {
+        let area = egui::Area::new(Id::unique("nc-block-menu"))
+            .order(egui::Order::Foreground)
+            .default_size(Vec2::new(300.0, 640.0))
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(236.0);
                     let search = ui.add(
@@ -1067,8 +1107,7 @@ impl EditorState {
                         }
                     }
                 });
-            },
-        );
+            });
         let main_rect = area.response.rect;
         // sub-menu to the right of the menu
         let sub_hit = if sub > 0 && q.is_empty() {
@@ -1080,7 +1119,7 @@ impl EditorState {
                         if sub == 1 {
                             ui.set_width(240.0);
                             let items = filter_items("", &SlashMode::TurnInto);
-                            egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
+                            egui::ScrollArea::vertical().max_height(520.0).show(ui, |ui| {
                                 for it in items {
                                     let (r, resp) =
                                         ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
@@ -1360,7 +1399,6 @@ impl EditorState {
             return;
         };
         let Some((_, rect)) = rects.iter().find(|(j, _)| *j == i) else { return };
-        let pal = env.pal;
         let mut apply = false;
         let mut unlink = false;
         let mut cancel = ctx.input_mut(|inp| inp.consume_key(Modifiers::NONE, Key::Escape));
@@ -1370,7 +1408,6 @@ impl EditorState {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("🔗").color(pal.text_secondary));
                         let r = ui.add(
                             egui::TextEdit::singleline(&mut url)
                                 .id(Id::unique("nc-link-url"))

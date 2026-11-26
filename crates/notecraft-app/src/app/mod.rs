@@ -758,10 +758,13 @@ impl NcApp {
                     };
                     if let Some(id) = self.new_database(parent, kind) {
                         let title = self.ws.as_ref().map(|w| w.dbs[&id].schema.title.clone()).unwrap_or_default();
-                        self.insert_blocks(index, replace, vec![Block::paragraph(format!("[[{title}]]"))]);
+                        // the database is shown in the page itself (and stays editable there)
+                        self.insert_blocks(
+                            index,
+                            replace,
+                            vec![Block::new(BlockKind::Database, title), Block::paragraph("")],
+                        );
                         self.flush_save();
-                        self.navigate(Target::Doc(DocId::Database(id)));
-                        self.focus_title = true;
                     }
                 }
             }

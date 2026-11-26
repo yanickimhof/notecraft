@@ -571,9 +571,75 @@ pub fn html_to_markdown(html: &str, resolve: &mut Resolver) -> Converted {
     Converted { title: c.title.take(), markdown: join_blocks(&c.blocks) }
 }
 
+/// Convert the HTML an app puts on the clipboard (Outlook, Word, a web page) to Markdown, ready to be
+/// pasted as blocks: only the copied fragment is kept, Office comments and styles are dropped, and
+/// the empty lines and non-breaking spaces Office adds are tidied. Images are not pasted.
+pub fn clipboard_html_to_markdown(html: &str) -> String {
+    let mut h = html;
+    if let (Some(a), Some(b)) = (html.find("<!--StartFragment-->"), html.find("<!--EndFragment-->")) {
+        if a + 20 <= b {
+            h = &html[a + 20..b];
+        }
+    }
+    // comments, including the Office `<!--[if gte mso 9]> ... <![endif]-->` blocks
+    let mut clean = String::with_capacity(h.len());
+    let mut rest = h;
+    while let Some(a) = rest.find("<!--") {
+        clean.push_str(&rest[..a]);
+        match rest[a..].find("-->") {
+            Some(b) => rest = &rest[a + b + 3..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    clean.push_str(rest);
+    let md = html_to_markdown(&clean, &mut |_, _| None).markdown.replace('\u{a0}', " ");
+    let mut out = String::new();
+    let mut blank = 0;
+    for line in md.lines() {
+        let line = line.trim_end();
+        if line.trim().is_empty() {
+            blank += 1;
+            if blank > 1 {
+                continue;
+            }
+        } else {
+            blank = 0;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outlook_clipboard_keeps_structure_and_drops_office_noise() {
+        let html = "<html><head><style>p.MsoNormal {margin:0}</style></head><body>\
+            <!--StartFragment--><!--[if gte mso 9]><xml><o:OfficeDocumentSettings/></xml><![endif]-->\
+            <p class=MsoNormal>Bonjour <b>Marc</b>,<o:p></o:p></p>\
+            <p class=MsoNormal><o:p>&nbsp;</o:p></p>\
+            <p class=MsoNormal><o:p>&nbsp;</o:p></p>\
+            <p class=MsoNormal>Voir <a href=\"https://a.ch\">le plan</a> :</p>\
+            <ul><li>un</li><li>deux</li></ul><!--EndFragment--></body></html>";
+        assert_eq!(
+            clipboard_html_to_markdown(html),
+            "Bonjour **Marc**,\n\nVoir [le plan](https://a.ch) :\n\n- un\n- deux"
+        );
+    }
+
+    #[test]
+    fn clipboard_table_becomes_a_markdown_table() {
+        let md = clipboard_html_to_markdown(
+            "<table><tr><th>Nom</th><th>Prix</th></tr><tr><td>A</td><td>10</td></tr></table>",
+        );
+        assert!(md.contains("| Nom | Prix |") && md.contains("| A | 10 |"), "{md}");
+    }
 
     fn conv(html: &str) -> String {
         html_to_markdown(html, &mut |_, at| {

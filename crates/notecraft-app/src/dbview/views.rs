@@ -21,14 +21,38 @@ impl DbUi {
         let groups = database::query(&ws.dbs[db], view);
         let grouped = groups.len() > 1 || groups.first().is_some_and(|g| g.key.is_some());
         let gprop = database::group_prop(&schema, view).cloned();
-        let total_w: f32 = props.iter().map(|p| col_width(view, p)).sum::<f32>() + 40.0;
+        // column widths: the saved ones, or the live width while a column handle is being dragged
+        let mut widths: Vec<f32> = props
+            .iter()
+            .map(|p| match &self.col_drag {
+                Some((id, w)) if *id == p.id => *w,
+                _ => col_width(view, p),
+            })
+            .collect();
+        // keyboard: the text cells of the table form a grid the arrow keys, Tab and Enter move across
+        let grid: Vec<Vec<Option<Id>>> = groups
+            .iter()
+            .flat_map(|g| g.rows.iter())
+            .map(|rid| props.iter().map(|p| text_cell_id(db, rid, p)).collect())
+            .collect();
+        self.table_keys(ui, &grid);
+        if let Some(rid) = self.focus_row.clone() {
+            let at = groups.iter().flat_map(|g| g.rows.iter()).position(|r| *r == rid);
+            if let Some(at) = at {
+                self.focus_row = None;
+                if let Some(id) = grid[at].iter().flatten().next().copied() {
+                    ui.memory_mut(|m| m.request_focus(id));
+                }
+            }
+        }
+        let total_w: f32 = widths.iter().sum::<f32>() + 40.0;
         egui::ScrollArea::horizontal().id_salt(("tbl", db, &view.id)).show(ui, |ui| {
             ui.vertical(|ui| {
                 ui.set_min_width(total_w);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
-                    for p in &props {
-                        let w = col_width(view, p);
+                    for (ci, p) in props.iter().enumerate() {
+                        let w = widths[ci];
                         let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 32.0), Sense::click());
                         if resp.hovered() {
                             ui.painter().rect_filled(rect, CornerRadius::ZERO, pal.hover);
@@ -41,6 +65,31 @@ impl DbUi {
                             pal.text_secondary,
                         );
                         ui.painter().vline(rect.max.x, rect.y_range(), Stroke::new(1.0, pal.border));
+                        // drag the right edge of the header to resize the column
+                        let grip = ui.interact(
+                            egui::Rect::from_min_max(
+                                egui::pos2(rect.max.x - 4.0, rect.min.y),
+                                egui::pos2(rect.max.x + 4.0, rect.max.y),
+                            ),
+                            Id::unique(("col-grip", db, &p.id)),
+                            Sense::drag(),
+                        );
+                        if grip.hovered() || grip.dragged() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeColumn);
+                            ui.painter().vline(rect.max.x, rect.y_range(), Stroke::new(2.0, pal.accent));
+                        }
+                        if grip.dragged() {
+                            let nw = (w + grip.drag_delta().x).clamp(60.0, 900.0);
+                            self.col_drag = Some((p.id.clone(), nw));
+                            widths[ci] = nw;
+                        }
+                        if grip.drag_stopped() {
+                            if let Some((pid, nw)) = self.col_drag.take() {
+                                edit_view(ws, db, &view.id, actions, |v| {
+                                    v.widths.insert(pid, nw);
+                                });
+                            }
+                        }
                         egui::Popup::menu(&resp)
                             .id(Id::unique(("prop-menu", &p.id)))
                             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -75,39 +124,49 @@ impl DbUi {
                         hline(ui, total_w, pal);
                     }
                     for rid in &g.rows {
-                        let row_resp = ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            for p in &props {
-                                let w = col_width(view, p);
-                                let cell = ui.allocate_ui_with_layout(
-                                    Vec2::new(w, 34.0),
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                    |ui| {
-                                        ui.set_min_size(Vec2::new(w, 34.0));
-                                        ui.set_max_width(w);
-                                        ui.add_space(8.0);
-                                        if p.kind == PropKind::Title {
-                                            self.title_cell(ui, ws, db, rid, w - 14.0, pal, lang, actions);
-                                        } else {
-                                            cell_editor(
-                                                ui,
-                                                ws,
-                                                db,
-                                                rid,
-                                                p,
-                                                w - 14.0,
-                                                pal,
-                                                lang,
-                                                actions,
-                                                &mut self.new_option,
-                                            );
-                                        }
-                                    },
-                                );
-                                let r = cell.response.rect;
-                                ui.painter().vline(r.min.x + w, r.y_range(), Stroke::new(1.0, pal.border));
-                            }
-                        });
+                        let row_resp = ui.allocate_ui_with_layout(
+                            Vec2::new(total_w, 34.0),
+                            egui::Layout::left_to_right(egui::Align::TOP),
+                            |ui| {
+                                ui.spacing_mut().item_spacing.x = 0.0;
+                                for (ci, p) in props.iter().enumerate() {
+                                    let w = widths[ci];
+                                    let cell = ui.allocate_ui_with_layout(
+                                        Vec2::new(w, 34.0),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.set_min_size(Vec2::new(w, 34.0));
+                                            ui.set_max_width(w);
+                                            ui.add_space(8.0);
+                                            if p.kind == PropKind::Title {
+                                                self.title_cell(ui, ws, db, rid, w - 14.0, pal, lang, actions);
+                                            } else {
+                                                cell_editor(
+                                                    ui,
+                                                    ws,
+                                                    db,
+                                                    rid,
+                                                    p,
+                                                    w - 14.0,
+                                                    pal,
+                                                    lang,
+                                                    actions,
+                                                    &mut self.new_option,
+                                                );
+                                            }
+                                        },
+                                    );
+                                    let _ = cell;
+                                }
+                            },
+                        );
+                        // column separators span the whole row, which grows with wrapped text
+                        let rr = row_resp.response.rect;
+                        let mut x = rr.min.x;
+                        for w in &widths {
+                            x += *w;
+                            ui.painter().vline(x, rr.y_range(), Stroke::new(1.0, pal.border));
+                        }
                         row_resp.response.context_menu(|ui| {
                             if ui.button(tr(lang, "open_as_page")).clicked() {
                                 actions.push(DbAction::Open(DocId::Row(db.to_string(), rid.clone())));
@@ -142,6 +201,66 @@ impl DbUi {
         });
     }
 
+    /// Keyboard moves between the text cells: Tab and Shift+Tab along the rows, Enter and the up and
+    /// down arrows between rows, left and right arrows at the edges of the text, Escape to leave.
+    fn table_keys(&mut self, ui: &mut Ui, grid: &[Vec<Option<Id>>]) {
+        let ctx = ui.ctx().clone();
+        let Some(f) = ctx.memory(|m| m.focused()) else { return };
+        let Some((r, c)) =
+            grid.iter().enumerate().find_map(|(r, row)| row.iter().position(|x| *x == Some(f)).map(|c| (r, c)))
+        else {
+            return;
+        };
+        let edge: Option<(Id, bool, bool, bool, bool)> = ctx.data(|d| d.get_temp(Id::unique("nc-db-edge")));
+        let (first, last, start, end) =
+            edge.filter(|e| e.0 == f).map(|e| (e.1, e.2, e.3, e.4)).unwrap_or((true, true, false, false));
+        // text cells of the grid in reading order
+        let flat: Vec<(usize, usize, Id)> = grid
+            .iter()
+            .enumerate()
+            .flat_map(|(ri, row)| row.iter().enumerate().filter_map(move |(ci, id)| id.map(|id| (ri, ci, id))))
+            .collect();
+        let at = flat.iter().position(|(ri, ci, _)| (*ri, *ci) == (r, c));
+        let vertical = |delta: i32| -> Option<Id> {
+            let nr = r as i32 + delta;
+            if nr < 0 {
+                return None;
+            }
+            grid.get(nr as usize).and_then(|row| row.get(c).copied().flatten())
+        };
+        let step = |delta: i32| -> Option<Id> {
+            let k = at? as i32 + delta;
+            (k >= 0).then(|| flat.get(k as usize).map(|x| x.2)).flatten()
+        };
+        let none = egui::Modifiers::NONE;
+        let mut target: Option<Id> = None;
+        let mut leave = false;
+        ctx.input_mut(|i| {
+            if i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab) {
+                target = step(-1);
+            } else if i.consume_key(none, egui::Key::Tab) {
+                target = step(1);
+            } else if i.consume_key(none, egui::Key::Enter) {
+                target = vertical(1);
+            } else if first && i.consume_key(none, egui::Key::ArrowUp) {
+                target = vertical(-1);
+            } else if last && i.consume_key(none, egui::Key::ArrowDown) {
+                target = vertical(1);
+            } else if start && i.consume_key(none, egui::Key::ArrowLeft) {
+                target = step(-1);
+            } else if end && i.consume_key(none, egui::Key::ArrowRight) {
+                target = step(1);
+            } else if i.consume_key(none, egui::Key::Escape) {
+                leave = true;
+            }
+        });
+        if leave {
+            ctx.memory_mut(|m| m.surrender_focus(f));
+        } else if let Some(t) = target {
+            ctx.memory_mut(|m| m.request_focus(t));
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn title_cell(
         &mut self,
@@ -160,15 +279,21 @@ impl DbUi {
         if !icon.is_empty() {
             ui.label(RichText::new(&icon).size(15.0));
         }
-        let resp = ui.add(
-            egui::TextEdit::singleline(&mut title)
-                .id(Id::unique(("title-cell", db, rid)))
-                .frame(egui::Frame::NONE)
-                .desired_width((w - 60.0).max(40.0))
-                .font(egui::FontId::proportional(14.5))
-                .hint_text(RichText::new(tr(lang, "untitled")).color(pal.text_faint)),
-        );
+        // a long title wraps onto several lines; Shift+Enter is ignored, Enter moves to the row below
+        let tid = Id::unique(("title-cell", db, rid));
+        let o = egui::TextEdit::multiline(&mut title)
+            .id(tid)
+            .frame(egui::Frame::NONE)
+            .desired_width((w - 60.0).max(40.0))
+            .desired_rows(1)
+            .return_key(Some(egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::Enter)))
+            .font(egui::FontId::proportional(14.5))
+            .hint_text(RichText::new(tr(lang, "untitled")).color(pal.text_faint))
+            .show(ui);
+        note_caret_edges(ui, tid, &o);
+        let resp = o.response;
         if resp.changed() {
+            title = title.replace('\n', " ");
             if let Some(r) = ws.dbs.get_mut(db).and_then(|d| d.rows.get_mut(rid)) {
                 r.meta.title = title;
                 r.touch();

@@ -578,12 +578,17 @@ fn inline_job(text: &str, base: &Base, pal: &Palette, wrap: f32) -> LayoutJob {
             weight = weight.max(560.0);
             f.color = pal.mention;
         }
+        // a link reads as a link: blue (an explicit text colour still wins)
+        if s.link.is_some() && s.color.is_none() && !s.code {
+            f.color = pal.accent;
+        }
         if theme::has_weight_axis() && weight != 400.0 {
             f.coords = theme::weight(weight);
         }
         if seg.marker {
             // WYSIWYG: markers stay in the stored text but are never shown
-            f.font_id = FontId::proportional(0.5);
+            // hidden markers must not take room: a long link address used to leave a wide gap
+            f.font_id = FontId::proportional(0.01);
             f.color = Color32::TRANSPARENT;
             f.underline = Stroke::NONE;
             f.strikethrough = Stroke::NONE;
@@ -616,7 +621,9 @@ fn paint_underlines(
             continue;
         }
         let s = &seg.style;
-        let c = if s.link.is_some() || s.mention.is_some() {
+        let c = if s.link.is_some() && s.color.is_none() {
+            Some(pal.accent)
+        } else if s.link.is_some() || s.mention.is_some() {
             Some(pal.text_faint)
         } else if s.underline {
             Some(if s.code { pal.text_secondary } else { color })
@@ -1397,9 +1404,16 @@ impl EditorState {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.set_max_width(380.0);
-                        ui.label(RichText::new("🔗").color(pal.text_secondary));
-                        ui.add(egui::Label::new(RichText::new(&card.url).color(pal.text_secondary)).truncate());
+                        // the address gets a fixed share and is cut with "…"; the buttons keep their room
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(260.0, 24.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.add(egui::Label::new(RichText::new(&card.url).color(pal.text_secondary)).truncate())
+                                    .on_hover_text(&card.url);
+                            },
+                        );
+                        ui.add_space(6.0);
                         if ui.button(tr(lang, "open")).clicked() {
                             open = true;
                         }
@@ -2642,6 +2656,19 @@ impl EditorState {
                 }
             }
         }
+        // ⌘ click on a link opens it
+        if resp.clicked() && ctx.input(|i| i.modifiers.command) {
+            if let Some(r) = o.cursor_range {
+                if let Some((_, d0, d1)) = link_target_at(&blocks[i].text, r.primary.index.0) {
+                    let url = normalize_url(&blocks[i].text[d0..d1].replace("%20", " "));
+                    if url.contains("://") || url.starts_with("mailto:") {
+                        out.actions.push(Action::OpenUrl(url));
+                    } else {
+                        out.actions.push(Action::OpenFile(url));
+                    }
+                }
+            }
+        }
         if resp.drag_started() {
             self.drag_origin = Some(bid);
         }
@@ -2720,6 +2747,7 @@ impl EditorState {
 
 mod helpers;
 mod keys;
+mod richpaste;
 pub use helpers::human_size;
 use helpers::number_label;
 

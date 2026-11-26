@@ -22,6 +22,33 @@ pub(super) fn col_width(view: &View, p: &Property) -> f32 {
     })
 }
 
+/// Id of the text field of a cell, when the cell is a text field the keyboard can move between.
+pub(super) fn text_cell_id(db: &str, rid: &str, p: &Property) -> Option<Id> {
+    match p.kind {
+        PropKind::Title => Some(Id::unique(("title-cell", db, rid))),
+        PropKind::Text | PropKind::Url | PropKind::Email | PropKind::Phone | PropKind::Number => {
+            Some(Id::unique(("cell", db, rid, &p.id)))
+        }
+        _ => None,
+    }
+}
+
+/// Remember where the caret sits in a text cell (first or last line, start or end of the text), so that
+/// the arrow keys can leave the cell only at its edges. Read back by the table on the next frame.
+pub(super) fn note_caret_edges(ui: &mut Ui, id: Id, o: &egui::text_edit::TextEditOutput) {
+    if !o.response.has_focus() {
+        return;
+    }
+    let Some(r) = o.cursor_range else { return };
+    let here = o.galley.pos_from_cursor(r.primary);
+    let first = here.min.y <= 1.0;
+    let last = here.max.y >= o.galley.rect.max.y - 1.0;
+    let collapsed = r.primary.index.0 == r.secondary.index.0;
+    let start = collapsed && r.primary.index.0 == 0;
+    let end = collapsed && r.primary.index.0 >= o.galley.text().chars().count();
+    ui.data_mut(|d| d.insert_temp(Id::unique("nc-db-edge"), (id, first, last, start, end)));
+}
+
 pub(super) fn hline(ui: &mut Ui, w: f32, pal: &Palette) {
     let c = ui.cursor().min;
     ui.painter().hline(egui::Rangef::new(c.x, c.x + w), c.y, Stroke::new(1.0, pal.border));
@@ -143,13 +170,30 @@ pub fn cell_editor(
         PropKind::Text | PropKind::Url | PropKind::Email | PropKind::Phone | PropKind::Number => {
             let mut text = value.display();
             let link = matches!(p.kind, PropKind::Url | PropKind::Email) && !value.is_empty();
-            let r = ui.add(
-                egui::TextEdit::singleline(&mut text)
+            let width = if link { w - 26.0 } else { w };
+            let hint = RichText::new(tr(lang, "empty")).color(pal.text_faint);
+            let r = if p.kind == PropKind::Text {
+                // long text wraps onto several lines instead of being cut; Shift+Enter adds a line break
+                let o = egui::TextEdit::multiline(&mut text)
                     .id(id)
                     .frame(egui::Frame::NONE)
-                    .desired_width(if link { w - 26.0 } else { w })
-                    .hint_text(RichText::new(tr(lang, "empty")).color(pal.text_faint)),
-            );
+                    .desired_width(width)
+                    .desired_rows(1)
+                    .return_key(Some(egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::Enter)))
+                    .hint_text(hint)
+                    .show(ui);
+                note_caret_edges(ui, id, &o);
+                o.response
+            } else {
+                let o = egui::TextEdit::singleline(&mut text)
+                    .id(id)
+                    .frame(egui::Frame::NONE)
+                    .desired_width(width)
+                    .hint_text(hint)
+                    .show(ui);
+                note_caret_edges(ui, id, &o);
+                o.response
+            };
             if r.changed() {
                 let v = if p.kind == PropKind::Number {
                     match text.trim().replace(',', ".").parse::<f64>() {

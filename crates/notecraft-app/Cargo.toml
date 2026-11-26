@@ -20,6 +20,7 @@ egui_extras = { version = "0.37", features = ["image", "file", "gif", "webp", "d
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 jiff.workspace = true
 rfd = "0.18"
+arboard = { version = "3", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 
