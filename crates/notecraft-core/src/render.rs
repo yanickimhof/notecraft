@@ -237,6 +237,13 @@ pub(crate) fn css_colors(name: &str) -> (Option<&'static str>, Option<&'static s
     (text, bg)
 }
 
+/// Links that run code or read local files when opened: never written into an exported page.
+fn has_script_scheme(url: &str) -> bool {
+    let clean: String =
+        url.chars().filter(|c| !c.is_control() && !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+    ["javascript:", "vbscript:", "data:", "file:"].iter().any(|s| clean.starts_with(s))
+}
+
 fn html_runs(runs: &[Run]) -> String {
     let mut o = String::new();
     for r in runs {
@@ -260,7 +267,7 @@ fn html_runs(runs: &[Run]) -> String {
         if let Some((hex, false)) = st.color.as_deref().and_then(css_color) {
             s = format!("<span style=\"color:{hex}\">{s}</span>");
         }
-        if let Some(url) = &st.link {
+        if let Some(url) = st.link.as_deref().filter(|u| !has_script_scheme(u)) {
             s = format!("<a href=\"{}\">{s}</a>", escape(url));
         } else if st.mention.is_some() {
             s = format!("<span class=\"mention\">{s}</span>");

@@ -65,6 +65,8 @@ pub struct AiPrefs {
     pub grok_model: String,
     /// Allows an Ollama that is not on this Mac (only by editing the preferences file).
     pub allow_remote_ollama: bool,
+    /// Lockdown: no connection leaves this Mac (cloud AI, downloads and publishing are refused).
+    pub network_lockdown: bool,
 }
 
 impl Default for AiPrefs {
@@ -77,6 +79,7 @@ impl Default for AiPrefs {
             openai_model: notecraft_ai::DEFAULT_OPENAI_MODEL.into(),
             grok_model: notecraft_ai::DEFAULT_GROK_MODEL.into(),
             allow_remote_ollama: false,
+            network_lockdown: false,
         }
     }
 }
@@ -172,6 +175,8 @@ pub struct AiState {
     pub models: Vec<String>,
     pub models_loading: Option<Receiver<Result<Vec<String>, AiError>>>,
     pub models_error: Option<String>,
+    /// Ollama answers on every interface, so other machines could reach it (checked now and then).
+    pub ollama_exposed: Option<(std::time::Instant, bool)>,
     /// A local model being downloaded through Ollama.
     pub pull: Option<PullJob>,
     pub key_input: String,

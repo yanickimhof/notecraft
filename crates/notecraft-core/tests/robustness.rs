@@ -186,3 +186,150 @@ fn the_rich_markdown_converter_survives_tag_soup() {
         let _ = notecraft_core::import_rich_md::blocks_from_markdown(&s);
     }
 }
+
+const COLOR_PIECES: &[&str] = &[
+    "<span style=\"color:red\">",
+    "<span style=\"color:blue\">",
+    "</span>",
+    "a",
+    "bé",
+    "**",
+    "*",
+    " ",
+    "`",
+    "[[x]]",
+    "é",
+    "日本",
+];
+
+fn colored_text(seed: &mut u64, max: usize) -> String {
+    let n = (rng(seed) % max as u64) as usize;
+    (0..n).map(|_| COLOR_PIECES[(rng(seed) % COLOR_PIECES.len() as u64) as usize]).collect()
+}
+
+/// Recolouring any selection of any text never panics and never leaves the colour tags unbalanced
+/// when it started balanced.
+#[test]
+fn recolouring_keeps_the_colour_tags_balanced() {
+    let mut seed = 0xA0761D6478BD642Fu64;
+    let count = |t: &str, p: &str| t.matches(p).count();
+    let mut checked = 0;
+    for _ in 0..6000 {
+        let t = colored_text(&mut seed, 14);
+        // only text whose tags open before they close is well formed
+        let mut depth = 0i32;
+        let mut well_formed = true;
+        let mut events: Vec<(usize, i32)> = t
+            .match_indices("<span")
+            .map(|(i, _)| (i, 1))
+            .chain(t.match_indices("</span>").map(|(i, _)| (i, -1)))
+            .collect();
+        events.sort();
+        for (_, d) in events {
+            depth += d;
+            well_formed &= depth >= 0;
+        }
+        if !well_formed || depth != 0 {
+            continue;
+        }
+        let n = t.chars().count() as u64 + 1;
+        let (a, b) = ((rng(&mut seed) % n) as usize, (rng(&mut seed) % n) as usize);
+        for color in [Some("green"), None] {
+            let (out, _) = inline::set_color(&t, (a.min(b), a.max(b)), color);
+            assert_eq!(count(&out, "<span"), count(&out, "</span>"), "{t:?} {a}-{b} {color:?} gave {out:?}");
+        }
+        checked += 1;
+    }
+    assert!(checked > 500, "too few balanced samples ({checked})");
+    // stripping every colour leaves no tag and keeps the words
+    assert_eq!(inline::strip_colors("a <span style=\"color:red\">b</span> c"), "a b c");
+}
+
+/// A page pasted or imported from the web is hostile: any soup of tags converts without a panic and
+/// without a script or an event handler surviving into the Markdown.
+#[test]
+fn html_import_survives_tag_soup() {
+    const SOUP: &[&str] = &[
+        "<p>",
+        "</p>",
+        "<b>",
+        "</i>",
+        "<table>",
+        "<tr>",
+        "<td>",
+        "</table>",
+        "<ul>",
+        "<li>",
+        "<script>alert(1)</script>",
+        "<img src=x onerror=alert(1)>",
+        "<a href=\"javascript:alert(1)\">",
+        "</a>",
+        "<span style=\"color:red\">",
+        "&amp;",
+        "&#x41;",
+        "&#99999999;",
+        "<br>",
+        "<pre>",
+        "<code>",
+        "text",
+        "é",
+        "<!--",
+        "-->",
+        "<",
+        ">",
+        "\"",
+        "'",
+    ];
+    let mut seed = 0xE7037ED1A0B428DBu64;
+    for _ in 0..1500 {
+        let n = (rng(&mut seed) % 40) as usize;
+        let html: String = (0..n).map(|_| SOUP[(rng(&mut seed) % SOUP.len() as u64) as usize]).collect();
+        let md = notecraft_core::import_html::clipboard_html_to_markdown(&html);
+        assert!(!md.contains("onerror"), "{html:?} -> {md:?}");
+        let blocks = from_markdown(&md);
+        let _ = to_markdown(&blocks);
+    }
+}
+
+/// Whatever a page holds, exporting and publishing it never panics and never emits live script.
+#[test]
+fn rendering_hostile_pages_never_panics_or_emits_script() {
+    let mut seed = 0xC2B2AE3D27D4EB4Fu64;
+    let none = |_: &str| None;
+    let hostile = [
+        "<script>alert(1)</script>",
+        "[x](javascript:alert(1))",
+        "![i](javascript:alert(1))",
+        "<img src=x onerror=alert(1)>",
+        "**<script>**",
+        "| a | b |\n| - | - |\n| <script> | x |",
+    ];
+    for k in 0..400 {
+        let mut t = random_text(&mut seed, 30);
+        t.push_str("\n\n");
+        t.push_str(hostile[k % hostile.len()]);
+        let blocks = from_markdown(&t);
+        let html = notecraft_core::render::html_body(&blocks, &none);
+        assert!(!html.contains("<script"), "{t:?}");
+        assert!(!html.to_lowercase().contains("href=\"javascript"), "{t:?}");
+        let _ = notecraft_core::render::to_docx("t", &blocks, &none);
+    }
+}
+
+/// Table cells keep line breaks and pipes through a save and a read.
+#[test]
+fn table_cells_survive_line_breaks_and_pipes() {
+    use notecraft_core::blocks::{cells_to_text, table_cells};
+    let cells = vec![vec!["a\nb".to_string(), "c | d".to_string()], vec!["".to_string(), "é\n\nz".to_string()]];
+    let text = cells_to_text(&cells);
+    assert_eq!(table_cells(&text), cells);
+}
+
+/// A damaged header must not take the page down: the whole text stays readable.
+#[test]
+fn damaged_front_matter_keeps_the_text() {
+    for t in ["---\nid: a\n", "---\n---\n", "---", "---\n: : :\n---\nbody", "\u{feff}---\nid: 1\n---\nbody", ""] {
+        let (_, body) = notecraft_core::frontmatter::split(t);
+        assert!(t.contains(body), "{t:?}");
+    }
+}

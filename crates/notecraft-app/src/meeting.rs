@@ -342,11 +342,7 @@ impl NcApp {
             return t.clone();
         }
         let label = template_label(self.prefs.lang, t);
-        self.cached_note_templates()
-            .into_iter()
-            .find(|(_, n)| n == label)
-            .map(|(k, _)| k)
-            .unwrap_or_else(|| t.clone())
+        self.cached_note_templates().into_iter().find(|(_, n)| n == label).map(|(k, _)| k).unwrap_or_else(|| t.clone())
     }
 
     /// The note templates of the workspace, cached for a second (the meeting block asks at every frame).

@@ -56,17 +56,12 @@ pub(super) fn meeting_card(
                         fill.set_width(bar.width() * (level * 6.0).clamp(0.0, 1.0));
                         ui.painter().rect_filled(fill, egui::CornerRadius::same(3), pal.accent);
                         if !ready {
-                            ui.label(
-                                RichText::new(tr(lang, "meeting_loading_model"))
-                                    .size(12.0)
-                                    .color(pal.text_faint),
-                            );
+                            ui.label(RichText::new(tr(lang, "meeting_loading_model")).size(12.0).color(pal.text_faint));
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let stop = egui::Button::new(
-                                RichText::new(tr(lang, "meeting_stop")).color(egui::Color32::WHITE),
-                            )
-                            .fill(pal.danger);
+                            let stop =
+                                egui::Button::new(RichText::new(tr(lang, "meeting_stop")).color(egui::Color32::WHITE))
+                                    .fill(pal.danger);
                             if ui.add(stop).clicked() {
                                 act = Some(crate::meeting::MeetingAction::Stop);
                             }
@@ -117,18 +112,14 @@ pub(super) fn meeting_card(
                     ui.horizontal(|ui| {
                         use crate::widgets::text_link;
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        let label = if has_transcript {
-                            tr(lang, "meeting_resume")
-                        } else {
-                            tr(lang, "meeting_record")
-                        };
-                        let start = egui::Button::new(
-                            RichText::new(format!("\u{25cf}  {label}")).size(13.0).color(pal.bg),
-                        )
-                        .fill(pal.text)
-                        .stroke(egui::Stroke::NONE)
-                        .corner_radius(CornerRadius::same(14))
-                        .min_size(egui::vec2(0.0, 28.0));
+                        let label =
+                            if has_transcript { tr(lang, "meeting_resume") } else { tr(lang, "meeting_record") };
+                        let start =
+                            egui::Button::new(RichText::new(format!("\u{25cf}  {label}")).size(13.0).color(pal.bg))
+                                .fill(pal.text)
+                                .stroke(egui::Stroke::NONE)
+                                .corner_radius(CornerRadius::same(14))
+                                .min_size(egui::vec2(0.0, 28.0));
                         if ui.add(start).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                             act = Some(crate::meeting::MeetingAction::Start(bid));
                         }
@@ -248,8 +239,7 @@ pub(super) fn meeting_card(
                     if !names.is_empty() {
                         // (name being renamed, text typed so far, the box still has to take the focus)
                         let sid = Id::unique(("rename-speaker", bid));
-                        let mut editing: Option<(String, String, bool)> =
-                            ui.ctx().data(|d| d.get_temp(sid));
+                        let mut editing: Option<(String, String, bool)> = ui.ctx().data(|d| d.get_temp(sid));
                         ui.add_space(2.0);
                         ui.horizontal_wrapped(|ui| {
                             ui.spacing_mut().item_spacing.x = 8.0;
@@ -270,16 +260,13 @@ pub(super) fn meeting_card(
                                     let escape = ui.input(|i| i.key_pressed(Key::Escape));
                                     if enter {
                                         let (old, new, _) = editing.take().expect("checked");
-                                        act = Some(crate::meeting::MeetingAction::RenameSpeaker(
-                                            bid, old, new,
-                                        ));
+                                        act = Some(crate::meeting::MeetingAction::RenameSpeaker(bid, old, new));
                                     } else if escape || r.lost_focus() {
                                         editing = None;
                                     }
                                 } else {
-                                    let chip =
-                                        egui::Button::new(RichText::new(name).size(12.5).color(pal.accent))
-                                            .stroke(egui::Stroke::NONE);
+                                    let chip = egui::Button::new(RichText::new(name).size(12.5).color(pal.accent))
+                                        .stroke(egui::Stroke::NONE);
                                     let r = ui
                                         .add(chip)
                                         .on_hover_text(tr(lang, "rename_speaker_hint"))
@@ -301,9 +288,7 @@ pub(super) fn meeting_card(
                 if let Some(e) = &v.error {
                     ui.add_space(4.0);
                     ui.label(RichText::new(e).size(12.0).color(pal.danger));
-                    if v.mic_help
-                        && crate::widgets::text_link(ui, pal, tr(lang, "meeting_open_mic_settings"))
-                            .clicked()
+                    if v.mic_help && crate::widgets::text_link(ui, pal, tr(lang, "meeting_open_mic_settings")).clicked()
                     {
                         act = Some(crate::meeting::MeetingAction::OpenMicSettings);
                     }
@@ -312,23 +297,17 @@ pub(super) fn meeting_card(
                         if !others.is_empty() {
                             ui.add_space(2.0);
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(
-                                    RichText::new(tr(lang, "meeting_try_mic")).color(pal.text_secondary),
-                                );
+                                ui.label(RichText::new(tr(lang, "meeting_try_mic")).color(pal.text_secondary));
                                 for m in others {
                                     if crate::widgets::text_link(ui, pal, m).clicked() {
-                                        act = Some(crate::meeting::MeetingAction::UseMicrophone(
-                                            m.clone(),
-                                            bid,
-                                        ));
+                                        act = Some(crate::meeting::MeetingAction::UseMicrophone(m.clone(), bid));
                                     }
                                 }
                             });
                         }
                     }
                     if v.audio_help
-                        && crate::widgets::text_link(ui, pal, tr(lang, "meeting_open_audio_settings"))
-                            .clicked()
+                        && crate::widgets::text_link(ui, pal, tr(lang, "meeting_open_audio_settings")).clicked()
                     {
                         act = Some(crate::meeting::MeetingAction::OpenAudioSettings);
                     }

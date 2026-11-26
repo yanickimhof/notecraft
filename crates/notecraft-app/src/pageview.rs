@@ -116,7 +116,9 @@ impl NcApp {
         }
         let title = ws.title(&doc);
         let key = notecraft_ai::NOTE_TEMPLATES.iter().filter(|k| **k != "custom").find(|k| {
-            [crate::i18n::Lang::En, crate::i18n::Lang::Fr].iter().any(|l| crate::meeting::template_label(*l, k) == title)
+            [crate::i18n::Lang::En, crate::i18n::Lang::Fr]
+                .iter()
+                .any(|l| crate::meeting::template_label(*l, k) == title)
         });
         let Some(key) = key else { return };
         let pal = self.pal;

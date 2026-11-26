@@ -242,13 +242,17 @@ impl<'a, 'r> Conv<'a, 'r> {
         if self.cur.len() <= start {
             return;
         }
-        let inner = self.cur[start..].to_string();
+        // the children may have flushed the text built so far: then there is nothing left to wrap
+        let Some(inner) = self.cur.get(start..).map(str::to_string) else { return };
         let t = inner.trim();
         if t.is_empty() {
             return;
         }
         let lead = &inner[..inner.len() - inner.trim_start().len()];
         let trail = &inner[inner.trim_end().len()..];
+        if !self.cur.is_char_boundary(start) {
+            return;
+        }
         self.cur.truncate(start);
         self.cur.push_str(&format!("{lead}{open}{t}{close}{trail}"));
     }

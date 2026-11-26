@@ -12,6 +12,7 @@ name = "notecraft-app"
 path = "src/main.rs"
 
 [dependencies]
+notecraft-net = { path = "../notecraft-net" }
 notecraft-core = { path = "../notecraft-core" }
 notecraft-ai = { path = "../notecraft-ai" }
 notecraft-meeting = { path = "../notecraft-meeting" }

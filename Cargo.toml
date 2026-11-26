@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/notecraft-core", "crates/notecraft-cli", "crates/notecraft-app", "crates/notecraft-mcp", "crates/notecraft-ai", "crates/notecraft-meeting"]
-default-members = ["crates/notecraft-core", "crates/notecraft-cli", "crates/notecraft-app", "crates/notecraft-mcp", "crates/notecraft-ai", "crates/notecraft-meeting"]
+members = ["crates/notecraft-core", "crates/notecraft-cli", "crates/notecraft-app", "crates/notecraft-mcp", "crates/notecraft-ai", "crates/notecraft-meeting", "crates/notecraft-net"]
+default-members = ["crates/notecraft-core", "crates/notecraft-cli", "crates/notecraft-app", "crates/notecraft-mcp", "crates/notecraft-ai", "crates/notecraft-meeting", "crates/notecraft-net"]
 
 [workspace.package]
-version = "0.5.7"
+version = "0.5.8"
 edition = "2021"
 license-file = "LICENSE"
 publish = false

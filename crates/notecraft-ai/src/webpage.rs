@@ -7,6 +7,8 @@ pub fn page_title(url: &str) -> Option<String> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return None;
     }
+    // a pasted link must never probe this Mac or the local network, nor leave in lockdown
+    notecraft_net::check(notecraft_net::Purpose::LinkPreview, url).ok()?;
     let agent = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(5)))
         .timeout_global(Some(Duration::from_secs(8)))
@@ -49,6 +51,8 @@ mod tests {
     #[test]
     fn only_web_addresses_are_fetched() {
         assert_eq!(page_title("file:///etc/passwd"), None);
+        assert_eq!(page_title("http://127.0.0.1:1/"), None);
+        assert_eq!(page_title("http://192.168.1.1/admin"), None);
     }
 
     /// Needs the network: `cargo test -p notecraft-ai -- --ignored`.

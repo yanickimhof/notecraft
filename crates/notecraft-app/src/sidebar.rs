@@ -714,4 +714,3 @@ fn section_toggle(ui: &mut Ui, pal: &crate::theme::Palette, label: &str, key: &s
     );
     (open, add_clicked)
 }
-

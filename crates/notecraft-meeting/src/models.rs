@@ -108,6 +108,7 @@ fn fetch(
     fallback_total: u64,
     progress: &mut dyn FnMut(u64, u64) -> bool,
 ) -> Result<(), String> {
+    notecraft_net::check(notecraft_net::Purpose::ModelDownload, url).map_err(|b| b.to_string())?;
     let resp = agent().get(url).call().map_err(|e| explain(url, &e.to_string()))?;
     let total = resp
         .headers()

@@ -80,8 +80,7 @@ impl EditorState {
                 super::richpaste::copy_blocks(ctx, &[Block::paragraph(&frag)]);
                 if cut {
                     let before = blocks.clone();
-                    let kept: String =
-                        blocks[i].text.chars().take(a).chain(blocks[i].text.chars().skip(b)).collect();
+                    let kept: String = blocks[i].text.chars().take(a).chain(blocks[i].text.chars().skip(b)).collect();
                     blocks[i].text = kept;
                     self.focus = Some((bid, Caret::At(a)));
                     self.record(env.key, &before, None);
@@ -1020,66 +1019,69 @@ impl EditorState {
                     .max_height(list_h)
                     .min_scrolled_height(list_h.min(items.len() as f32 * 46.0))
                     .show(ui, |ui| {
-                    let mut last_section = "basic_blocks";
-                    for (k, it) in items.iter().enumerate() {
-                        let section = match it.key {
-                            "image" | "file" | "bookmark" => "media",
-                            "table" | "board" | "list" | "dbview" => "database_views",
-                            "group_toggle" | "group_callout" => "block_group",
-                            "meeting" => "ai_blocks",
-                            _ => "basic_blocks",
-                        };
-                        if slash.query.is_empty() && section != last_section {
-                            ui.add_space(4.0);
-                            ui.label(RichText::new(tr(env.lang, section)).size(12.0).color(pal.text_secondary));
-                        }
-                        last_section = section;
-                        let selected = k == slash.selected.min(items.len() - 1);
-                        let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
-                        // "turn into": the block's current type is marked
-                        let current_kind = slash.mode == SlashMode::TurnInto
-                            && kind_for(it.key).as_ref() == Some(&blocks[i].kind);
-                        if current_kind {
-                            ui.painter().rect_filled(r, CornerRadius::same(6), pal.accent_soft);
-                            ui.painter().text(
-                                r.right_center() - Vec2::new(12.0, 0.0),
-                                Align2::RIGHT_CENTER,
-                                "\u{2713}",
-                                FontId::proportional(14.0),
-                                pal.accent,
+                        let mut last_section = "basic_blocks";
+                        for (k, it) in items.iter().enumerate() {
+                            let section = match it.key {
+                                "image" | "file" | "bookmark" => "media",
+                                "table" | "board" | "list" | "dbview" => "database_views",
+                                "group_toggle" | "group_callout" => "block_group",
+                                "meeting" => "ai_blocks",
+                                _ => "basic_blocks",
+                            };
+                            if slash.query.is_empty() && section != last_section {
+                                ui.add_space(4.0);
+                                ui.label(RichText::new(tr(env.lang, section)).size(12.0).color(pal.text_secondary));
+                            }
+                            last_section = section;
+                            let selected = k == slash.selected.min(items.len() - 1);
+                            let (r, resp) =
+                                ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
+                            // "turn into": the block's current type is marked
+                            let current_kind =
+                                slash.mode == SlashMode::TurnInto && kind_for(it.key).as_ref() == Some(&blocks[i].kind);
+                            if current_kind {
+                                ui.painter().rect_filled(r, CornerRadius::same(6), pal.accent_soft);
+                                ui.painter().text(
+                                    r.right_center() - Vec2::new(12.0, 0.0),
+                                    Align2::RIGHT_CENTER,
+                                    "\u{2713}",
+                                    FontId::proportional(14.0),
+                                    pal.accent,
+                                );
+                            }
+                            if selected {
+                                ui.painter().rect_filled(r, CornerRadius::same(6), pal.hover);
+                                if ui.input(|i| i.key_pressed(Key::ArrowDown) || i.key_pressed(Key::ArrowUp)) {
+                                    resp.scroll_to_me(None);
+                                }
+                            }
+                            let mut child = ui.new_child(
+                                egui::UiBuilder::new()
+                                    .max_rect(r.shrink2(Vec2::new(6.0, 3.0)))
+                                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
                             );
-                        }
-                        if selected {
-                            ui.painter().rect_filled(r, CornerRadius::same(6), pal.hover);
-                            if ui.input(|i| i.key_pressed(Key::ArrowDown) || i.key_pressed(Key::ArrowUp)) {
-                                resp.scroll_to_me(None);
+                            // labels would take the click away from the row
+                            child.style_mut().interaction.selectable_labels = false;
+                            widgets::glyph_box(&mut child, it.glyph, pal, 36.0);
+                            child.vertical(|ui| {
+                                ui.add_space(2.0);
+                                ui.label(
+                                    RichText::new(tr(env.lang, &format!("blk_{}", it.key))).size(14.0).color(pal.text),
+                                );
+                                ui.label(
+                                    RichText::new(slash_desc(env.lang, it.key)).size(11.5).color(pal.text_secondary),
+                                );
+                            });
+                            if resp.hovered() && ui.input(|i| i.pointer.delta() != Vec2::ZERO) {
+                                if let Some(s) = &mut self.slash {
+                                    s.selected = k;
+                                }
+                            }
+                            if resp.clicked() {
+                                deferred.push(Deferred::Slash(i, it.key));
                             }
                         }
-                        let mut child = ui.new_child(
-                            egui::UiBuilder::new()
-                                .max_rect(r.shrink2(Vec2::new(6.0, 3.0)))
-                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-                        );
-                        // labels would take the click away from the row
-                        child.style_mut().interaction.selectable_labels = false;
-                        widgets::glyph_box(&mut child, it.glyph, pal, 36.0);
-                        child.vertical(|ui| {
-                            ui.add_space(2.0);
-                            ui.label(
-                                RichText::new(tr(env.lang, &format!("blk_{}", it.key))).size(14.0).color(pal.text),
-                            );
-                            ui.label(RichText::new(slash_desc(env.lang, it.key)).size(11.5).color(pal.text_secondary));
-                        });
-                        if resp.hovered() && ui.input(|i| i.pointer.delta() != Vec2::ZERO) {
-                            if let Some(s) = &mut self.slash {
-                                s.selected = k;
-                            }
-                        }
-                        if resp.clicked() {
-                            deferred.push(Deferred::Slash(i, it.key));
-                        }
-                    }
-                });
+                    });
             });
         });
         if area.response.clicked_elsewhere() && slash.mode == SlashMode::TurnInto {

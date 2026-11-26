@@ -1,0 +1,9 @@
+[package]
+name = "notecraft-net"
+description = "Network guard for NoteCraft: who may connect where, and a log of every attempt"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]

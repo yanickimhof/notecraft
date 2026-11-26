@@ -51,6 +51,10 @@ pub struct Cloudflare {
     t: Timeouts,
 }
 
+fn guard(url: &str) -> Result<(), PubError> {
+    notecraft_net::check(notecraft_net::Purpose::Publish, url).map_err(|b| PubError::Network(b.to_string()))
+}
+
 fn net(e: ureq::Error) -> PubError {
     PubError::Network(e.to_string())
 }
@@ -146,6 +150,7 @@ impl Cloudflare {
     }
 
     fn get(&self, path: &str) -> Result<Value, PubError> {
+        guard(API)?;
         let resp = agent(self.t)
             .get(format!("{API}{path}"))
             .header("Authorization", format!("Bearer {}", self.token))
@@ -157,6 +162,7 @@ impl Cloudflare {
     }
 
     fn send(&self, put: bool, path: &str, ctype: &str, body: &[u8]) -> Result<Value, PubError> {
+        guard(API)?;
         let a = agent(self.t);
         let url = format!("{API}{path}");
         let resp = if put { a.put(url) } else { a.post(url) }
@@ -170,6 +176,7 @@ impl Cloudflare {
     }
 
     fn delete(&self, path: &str) -> Result<Value, PubError> {
+        guard(API)?;
         let resp = agent(self.t)
             .delete(format!("{API}{path}"))
             .header("Authorization", format!("Bearer {}", self.token))

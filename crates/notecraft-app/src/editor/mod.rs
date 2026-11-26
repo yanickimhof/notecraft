@@ -240,6 +240,10 @@ pub struct EditorState {
     drag_origin: Option<u64>,
     /// A focus request held back a few frames: (block, caret, frame to apply it at).
     focus_later: Option<(u64, Caret, u64)>,
+    /// Height of every row drawn so far (block id → points), so that rows far outside the window are skipped.
+    heights: HashMap<u64, f32>,
+    /// The page and width the heights were measured for.
+    heights_for: (String, u32),
     /// Card shown under a link while the caret is inside it.
     link_card: Option<LinkCard>,
     card_rect: Option<Rect>,
@@ -288,6 +292,8 @@ impl Default for EditorState {
             frame: 0,
             drag_origin: None,
             focus_later: None,
+            heights: HashMap::new(),
+            heights_for: (String::new(), 0),
             link_card: None,
             card_rect: None,
             fmt_bar: None,
@@ -553,7 +559,14 @@ pub fn insert_at_char(s: &str, at: usize, ins: &str) -> String {
 }
 
 /// A small text menu without frame: the current choice and a caret, the other choices when opened.
-fn quiet_menu(ui: &mut Ui, pal: &theme::Palette, label: &str, items: &[(String, String)], current: &str, tip: &str) -> Option<String> {
+fn quiet_menu(
+    ui: &mut Ui,
+    pal: &theme::Palette,
+    label: &str,
+    items: &[(String, String)],
+    current: &str,
+    tip: &str,
+) -> Option<String> {
     let mut pick = None;
     ui.scope(|ui| {
         let w = &mut ui.visuals_mut().widgets;
@@ -779,6 +792,19 @@ fn sole_mention(text: &str) -> Option<&str> {
     (!inner.contains("]]") && !inner.contains("[[") && !inner.is_empty()).then_some(inner)
 }
 
+/// Where a block is drawn: its index in the page, the width of its text and the environment.
+struct BlockCx<'a> {
+    i: usize,
+    width: f32,
+    env: &'a Env<'a>,
+}
+
+/// Where a block drawing function reports what happened (deferred edits and the output of the editor).
+struct Sink<'a> {
+    deferred: &'a mut Vec<Deferred>,
+    out: &'a mut Output,
+}
+
 #[derive(Debug)]
 struct RowCtx {
     selected_range: Option<(usize, usize)>,
@@ -982,6 +1008,11 @@ impl EditorState {
         let mut rects: Vec<(usize, Rect)> = Vec::new();
         let mut deferred: Vec<Deferred> = Vec::new();
         let full_width = ui.available_width();
+        let marker = (env.key.to_string(), full_width.round() as u32);
+        if self.heights_for != marker {
+            self.heights.clear();
+            self.heights_for = marker;
+        }
         let gutter = 46.0;
         let dragging = egui::DragAndDrop::has_payload_of_type::<DragBlock>(&ctx);
 
@@ -1009,7 +1040,22 @@ impl EditorState {
                 i = end + 1;
                 continue;
             }
-            self.show_row(ui, blocks, i, full_width, &rc, env, &mut rects, &mut deferred, &mut out);
+            // rows far outside the window are not drawn again: a long page keeps a short frame time
+            let view = ui.clip_rect().expand2(Vec2::new(0.0, 900.0));
+            let before = ui.cursor().min.y;
+            let known = self.heights.get(&blocks[i].id).copied();
+            match known {
+                Some(h) if self.can_skip_row(blocks, i, &rc) && (before + h < view.min.y || before > view.max.y) => {
+                    ui.add_space(h.max(0.0));
+                    let r =
+                        Rect::from_min_size(egui::pos2(ui.min_rect().min.x, before), Vec2::new(full_width, h.max(1.0)));
+                    rects.push((i, r));
+                }
+                _ => {
+                    self.show_row(ui, blocks, i, full_width, &rc, env, &mut rects, &mut deferred, &mut out);
+                    self.heights.insert(blocks[i].id, ui.cursor().min.y - before);
+                }
+            }
             i += 1;
         }
 
@@ -1150,6 +1196,36 @@ impl EditorState {
             self.apply_deferred(blocks, d, env, &mut out);
         }
         out
+    }
+
+    /// A row may be left out when it is far off screen and nothing asks for it: no focus or selection,
+    /// no menu, no drag, and a plain kind of block (text, list, quote, code, divider).
+    fn can_skip_row(&self, blocks: &[Block], i: usize, rc: &RowCtx) -> bool {
+        if rc.dragging
+            || rc.selected_range.is_some()
+            || self.focus.is_some()
+            || self.focus_later.is_some()
+            || self.toc_target.is_some()
+            || self.slash.is_some()
+            || self.selected.is_some()
+            || self.sel_anchor.is_some()
+            || self.link_edit.is_some()
+            || self.focused_block == Some(blocks[i].id)
+            || self.table_focus.is_some()
+            || self.block_menu.is_some()
+        {
+            return false;
+        }
+        matches!(
+            blocks[i].kind,
+            BlockKind::Paragraph
+                | BlockKind::Heading(_)
+                | BlockKind::Bulleted
+                | BlockKind::Numbered
+                | BlockKind::Todo { .. }
+                | BlockKind::Quote
+                | BlockKind::Divider
+        ) && callout_group(blocks, i).is_none()
     }
 
     /// One block row: the block, its colour and selection backgrounds, and its "+" and handle.
@@ -1597,609 +1673,40 @@ impl EditorState {
                 }
                 resp
             }
-            BlockKind::Equation => {
-                let lay = cached_layout(ui.ctx(), Id::unique(("nc-eq-layout", bid)), &blocks[i].text, || {
-                    crate::math::layout(ui.painter(), &crate::math::parse(&blocks[i].text), 24.0)
-                });
-                ui.vertical(|ui| {
-                    ui.set_width(width);
-                    let (rect, resp) =
-                        ui.allocate_exact_size(Vec2::new(width, lay.height().max(24.0) + 16.0), Sense::click());
-                    if blocks[i].text.trim().is_empty() {
-                        ui.painter().text(
-                            rect.center(),
-                            Align2::CENTER_CENTER,
-                            tr(env.lang, "equation_empty"),
-                            FontId::proportional(13.0),
-                            pal.text_faint,
-                        );
-                    } else {
-                        let origin =
-                            egui::pos2(rect.center().x - lay.w / 2.0, rect.min.y + 8.0 + crate::math::ascent(&lay));
-                        crate::math::draw(ui.painter(), &lay, origin, pal.text);
-                    }
-                    if resp.clicked() {
-                        self.sel_anchor = None;
-                        self.selected = Some(bid);
-                    }
-                    let id = text_id(bid);
-                    self.apply_focus_request(ui.ctx(), &blocks[i], id);
-                    let before = blocks[i].text.clone();
-                    egui::TextEdit::multiline(&mut blocks[i].text)
-                        .id(id)
-                        .frame(egui::Frame::NONE)
-                        .desired_rows(1)
-                        .desired_width(width)
-                        .font(FontId::monospace(12.5))
-                        .text_color(pal.text_secondary)
-                        .hint_text(RichText::new(tr(env.lang, "equation_hint")).color(pal.text_faint))
-                        .show(ui);
-                    if blocks[i].text != before {
-                        out.changed = true;
-                    }
-                    if !blocks[i].text.trim().is_empty() {
-                        let b = egui::Button::new(
-                            RichText::new(format!("∑ {}", tr(env.lang, "equation_solve")))
-                                .size(12.0)
-                                .color(pal.text_secondary),
-                        )
-                        .frame(false);
-                        if ui.add(b).on_hover_text(tr(env.lang, "equation_solve_tip")).clicked() {
-                            out.actions.push(Action::SolveEquation(bid));
-                        }
-                    }
-                    resp
-                })
-                .inner
-            }
-            BlockKind::Bookmark { url } => {
-                let url = url.clone();
-                let lang = env.lang;
-                let mut committed: Option<String> = None;
-                let r = egui::Frame::NONE
-                    .stroke(Stroke::new(1.0, pal.border))
-                    .corner_radius(egui::CornerRadius::same(8))
-                    .inner_margin(egui::Margin::symmetric(12, 10))
-                    .show(ui, |ui| {
-                        ui.set_width(width - 26.0);
-                        if url.is_empty() {
-                            let buf = self.bookmark_input.entry(bid).or_default();
-                            let te = egui::TextEdit::singleline(buf)
-                                .id(Id::unique(("bookmark-url", bid)))
-                                .frame(egui::Frame::NONE)
-                                .hint_text(RichText::new(tr(lang, "bookmark_hint")).color(pal.text_faint))
-                                .desired_width(width - 30.0);
-                            let o = ui.add(te);
-                            // a new bookmark is ready to receive the link
-                            if self.focus.is_some_and(|(fb, _)| fb == bid) {
-                                o.request_focus();
-                                self.focus = None;
-                            }
-                            if o.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) && !buf.trim().is_empty() {
-                                let mut u = buf.trim().to_string();
-                                if !u.contains("://") {
-                                    u = format!("https://{u}");
-                                }
-                                committed = Some(u);
-                            }
-                        } else {
-                            let host =
-                                url.split("://").nth(1).unwrap_or(&url).split('/').next().unwrap_or("").to_string();
-                            let title = if blocks[i].text.is_empty() { host } else { blocks[i].text.clone() };
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new("🔖").size(16.0));
-                                ui.vertical(|ui| {
-                                    ui.label(RichText::new(title).size(14.5).strong().color(pal.text));
-                                    ui.label(RichText::new(&url).size(12.0).color(pal.text_faint));
-                                });
-                            });
-                        }
-                    });
-                if !url.is_empty() {
-                    let resp = r.response.interact(Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
-                    if resp.clicked() {
-                        out.actions.push(Action::OpenUrl(url.clone()));
-                    }
-                }
-                if let Some(u) = committed {
-                    self.bookmark_input.remove(&bid);
-                    blocks[i].kind = BlockKind::Bookmark { url: u.clone() };
-                    out.changed = true;
-                    let (tx, ctx2) = (self.title_tx.clone(), ui.ctx().clone());
-                    std::thread::spawn(move || {
-                        if let Some(t) = notecraft_ai::webpage::page_title(&u) {
-                            let _ = tx.send((bid, u, t));
-                            ctx2.request_repaint();
-                        }
-                    });
-                }
-                r.response
-            }
-            BlockKind::Table => {
-                let mut cells = notecraft_core::blocks::table_cells(&blocks[i].text);
-                let before = cells.clone();
-                let cols = cells.first().map_or(1, Vec::len);
-                let rows = cells.len();
-                // column widths follow the content: a short "Date" column stays narrow, a long "Status" one grows
-                let col_ws: Vec<f32> = {
-                    let total = (width - 40.0).max(60.0 * cols as f32);
-                    let weights: Vec<f32> = (0..cols)
-                        .map(|c| {
-                            let lens: Vec<usize> =
-                                cells.iter().map(|r| r.get(c).map_or(0, |t| visible_len(t))).collect();
-                            let avg = lens.iter().sum::<usize>() as f32 / lens.len().max(1) as f32;
-                            let max = lens.iter().copied().max().unwrap_or(0) as f32;
-                            (0.6 * avg + 0.4 * max.min(120.0)).clamp(8.0, 90.0)
-                        })
-                        .collect();
-                    let sum: f32 = weights.iter().sum();
-                    // never narrower than the longest word, so words are not cut in the middle
-                    let char_w = 7.0 * theme::body_scale();
-                    let mins: Vec<f32> = (0..cols)
-                        .map(|c| {
-                            let longest = cells
-                                .iter()
-                                .filter_map(|r| r.get(c))
-                                .flat_map(|t| t.split_whitespace())
-                                .map(|w| w.chars().count())
-                                .max()
-                                .unwrap_or(0) as f32;
-                            (longest * char_w + 26.0).clamp(60.0, total * 0.4)
-                        })
-                        .collect();
-                    let min_sum: f32 = mins.iter().sum();
-                    if min_sum >= total {
-                        mins.iter().map(|m| m * total / min_sum).collect()
-                    } else {
-                        let extra = total - min_sum;
-                        (0..cols).map(|c| mins[c] + extra * weights[c] / sum).collect()
-                    }
-                };
-                let mut drop_row: Option<usize> = None;
-                let mut drop_col: Option<usize> = None;
-                let (mut add_row, mut add_col) = (false, false);
-                // a new table puts the caret in its first cell
-                if self.focus.is_some_and(|(fb, _)| fb == bid) {
-                    self.focus = None;
-                    self.table_focus = Some((bid, 0, 0));
-                }
-                // Keys inside the grid: Tab and Shift+Tab, Enter (cell below), the arrows at the edges of a cell
-                // text. Tab or Enter in the last row adds a row.
-                let tctx = ui.ctx().clone();
-                let focused_cell = (0..rows)
-                    .flat_map(|r| (0..cols).map(move |c| (r, c)))
-                    .find(|&(r, c)| tctx.memory(|m| m.has_focus(Id::unique(("table-cell", bid, r, c)))));
-                if let Some((r, c)) = focused_cell {
-                    let cid = Id::unique(("table-cell", bid, r, c));
-                    let edge: Option<(Id, bool, bool, bool, bool)> =
-                        tctx.data(|d| d.get_temp(Id::unique(("table-edge", bid))));
-                    let (first, last, start, end) =
-                        edge.filter(|e| e.0 == cid).map(|e| (e.1, e.2, e.3, e.4)).unwrap_or((true, true, false, false));
-                    let none = Modifiers::NONE;
-                    let mut target: Option<(usize, usize)> = None;
-                    tctx.input_mut(|i| {
-                        if i.consume_key(Modifiers::SHIFT, Key::Tab) {
-                            target = if c > 0 {
-                                Some((r, c - 1))
-                            } else if r > 0 {
-                                Some((r - 1, cols - 1))
-                            } else {
-                                None
-                            };
-                        } else if i.consume_key(none, Key::Tab) {
-                            target = Some(if c + 1 < cols { (r, c + 1) } else { (r + 1, 0) });
-                        } else if !i.modifiers.shift && i.consume_key(none, Key::Enter) {
-                            target = Some((r + 1, c));
-                        } else if first && r > 0 && i.consume_key(none, Key::ArrowUp) {
-                            target = Some((r - 1, c));
-                        } else if last && r + 1 < rows && i.consume_key(none, Key::ArrowDown) {
-                            target = Some((r + 1, c));
-                        } else if start && (c > 0 || r > 0) && i.consume_key(none, Key::ArrowLeft) {
-                            target = Some(if c > 0 { (r, c - 1) } else { (r - 1, cols - 1) });
-                        } else if end && (c + 1 < cols || r + 1 < rows) && i.consume_key(none, Key::ArrowRight) {
-                            target = Some(if c + 1 < cols { (r, c + 1) } else { (r + 1, 0) });
-                        }
-                    });
-                    if let Some((tr, tc)) = target {
-                        if tr >= rows {
-                            add_row = true;
-                        }
-                        self.table_focus = Some((bid, tr, tc));
-                    }
-                }
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(0.0, 0.0);
-                    egui::ScrollArea::horizontal().id_salt(("table-scroll", bid)).auto_shrink([false, true]).show(
-                        ui,
-                        |ui| {
-                            ui.vertical(|ui| {
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 0.0;
-                                    for (c, &cw) in col_ws.iter().enumerate() {
-                                        let (r, resp) = ui.allocate_exact_size(Vec2::new(cw, 16.0), Sense::click());
-                                        if cols > 1 && ui.rect_contains_pointer(r.expand2(Vec2::new(0.0, 4.0))) {
-                                            ui.painter().text(
-                                                r.center(),
-                                                Align2::CENTER_CENTER,
-                                                "×",
-                                                FontId::proportional(10.0),
-                                                pal.text_faint,
-                                            );
-                                            if resp.clicked() {
-                                                drop_col = Some(c);
-                                            }
-                                        }
-                                    }
-                                });
-                                for (ri, row) in cells.iter_mut().enumerate() {
-                                    // every cell of a row takes the height of its tallest text
-                                    let row_base = Base {
-                                        size: (theme::BODY_SIZE - 1.0) * theme::body_scale(),
-                                        weight: if ri == 0 { 600.0 } else { 400.0 },
-                                        color: pal.text,
-                                        strike: false,
-                                    };
-                                    let row_h = row
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(ci, c)| {
-                                            let job = inline_job(c, &row_base, pal, col_ws[ci] - 18.0);
-                                            ui.fonts_mut(|f| f.layout_job(job)).size().y
-                                        })
-                                        .fold(row_base.size * 1.5, f32::max);
-                                    ui.horizontal_top(|ui| {
-                                        ui.spacing_mut().item_spacing.x = 0.0;
-                                        for (ci, cell) in row.iter_mut().enumerate() {
-                                            let frame = egui::Frame::NONE
-                                                .stroke(Stroke::new(1.0, pal.border))
-                                                .fill(if ri == 0 { pal.hover } else { Color32::TRANSPARENT })
-                                                .inner_margin(egui::Margin::symmetric(8, 5));
-                                            frame.show(ui, |ui| {
-                                                ui.set_min_height(row_h);
-                                                // long text wraps inside the cell; a cell stays one line of text
-                                                // inline styles (bold, links, colours...) render inside cells too
-                                                let cell_base = Base {
-                                                    size: (theme::BODY_SIZE - 1.0) * theme::body_scale(),
-                                                    weight: if ri == 0 { 600.0 } else { 400.0 },
-                                                    color: pal.text,
-                                                    strike: false,
-                                                };
-                                                let mut cell_layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, wrap: f32| -> Arc<egui::Galley> {
-                                                    let job = inline_job(buf.as_str(), &cell_base, pal, wrap);
-                                                    ui.fonts_mut(|f| f.layout_job(job))
-                                                };
-                                                // the text being typed keeps its spaces; the stored cell is trimmed
-                                                let cid = Id::unique(("table-cell", bid, ri, ci));
-                                                let raw_id = Id::unique(("table-raw", bid, ri, ci));
-                                                let mut buf: String = ui
-                                                    .data(|d| d.get_temp::<String>(raw_id))
-                                                    .filter(|r| r.trim() == cell.as_str())
-                                                    .unwrap_or_else(|| cell.clone());
-                                                let o = egui::TextEdit::multiline(&mut buf)
-                                                    .desired_rows(1)
-                                                    .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
-                                                    .id(cid)
-                                                    .frame(egui::Frame::NONE)
-                                                    .desired_width(col_ws[ci] - 18.0)
-                                                    .layouter(&mut cell_layouter)
-                                                    .show(ui);
-                                                let resp = o.response.clone();
-                                                if resp.has_focus() {
-                                                    if let Some(r) = o.cursor_range {
-                                                        let here = o.galley.pos_from_cursor(r.primary);
-                                                        let first = here.min.y <= 1.0;
-                                                        let last = here.max.y >= o.galley.rect.max.y - 1.0;
-                                                        let collapsed = r.primary.index.0 == r.secondary.index.0;
-                                                        let start = collapsed && r.primary.index.0 == 0;
-                                                        let end = collapsed
-                                                            && r.primary.index.0 >= o.galley.text().chars().count();
-                                                        ui.data_mut(|d| {
-                                                            d.insert_temp(
-                                                                Id::unique(("table-edge", bid)),
-                                                                (cid, first, last, start, end),
-                                                            )
-                                                        });
-                                                    }
-                                                }
-                                                let buf = buf.replace('\r', "");
-                                                ui.data_mut(|d| d.insert_temp(raw_id, buf.clone()));
-                                                *cell = buf.trim().to_string();
-                                                if self.table_focus == Some((bid, ri, ci)) {
-                                                    resp.request_focus();
-                                                    self.table_focus = None;
-                                                }
-                                            });
-                                        }
-                                        if rows > 1
-                                            && ui
-                                                .add(
-                                                    egui::Button::new(
-                                                        RichText::new("×").size(15.0).color(pal.text_faint),
-                                                    )
-                                                    .frame(false),
-                                                )
-                                                .clicked()
-                                        {
-                                            drop_row = Some(ri);
-                                        }
-                                    });
-                                }
-                            });
-                        },
-                    );
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 14.0;
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    RichText::new(format!("+ {}", tr(env.lang, "table_row")))
-                                        .size(12.0)
-                                        .color(pal.text_faint),
-                                )
-                                .frame(false),
-                            )
-                            .clicked()
-                        {
-                            add_row = true;
-                        }
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    RichText::new(format!("+ {}", tr(env.lang, "table_col")))
-                                        .size(12.0)
-                                        .color(pal.text_faint),
-                                )
-                                .frame(false),
-                            )
-                            .clicked()
-                        {
-                            add_col = true;
-                        }
-                    });
-                });
-                if let Some(r) = drop_row {
-                    cells.remove(r);
-                }
-                if let Some(c) = drop_col {
-                    for row in &mut cells {
-                        row.remove(c);
-                    }
-                }
-                if add_row {
-                    cells.push(vec![String::new(); cols]);
-                }
-                if add_col {
-                    for row in &mut cells {
-                        row.push(String::new());
-                    }
-                }
-                if cells != before
-                    || blocks[i].text.trim().is_empty() && cells != notecraft_core::blocks::table_cells("")
-                {
-                    blocks[i].text = notecraft_core::blocks::cells_to_text(&cells);
-                    out.changed = true;
-                }
-                ui.allocate_rect(ui.min_rect(), Sense::hover())
-            }
-            BlockKind::Database => {
-                let lang = env.lang;
-                let found = env.titles.get(&blocks[i].text.to_lowercase()).and_then(|(d, _)| match d {
-                    DocId::Database(id) => Some((id.clone(), d.clone())),
-                    _ => None,
-                });
-                egui::Frame::NONE
-                    .stroke(Stroke::new(1.0, pal.border))
-                    .corner_radius(egui::CornerRadius::same(8))
-                    .inner_margin(egui::Margin::symmetric(12, 10))
-                    .show(ui, |ui| {
-                        ui.set_width(width - 26.0);
-                        ui.vertical(|ui| match found {
-                            Some((id, doc)) => {
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new("⊞").size(15.0).color(pal.text_faint));
-                                    ui.label(RichText::new(&blocks[i].text).size(15.0).strong().color(pal.text));
-                                    if ui.add(egui::Button::new(RichText::new("↗").color(pal.text_faint))).clicked() {
-                                        out.actions.push(Action::Navigate(doc));
-                                    }
-                                });
-                                ui.add_space(4.0);
-                                (env.embed)(ui, bid, &id);
-                            }
-                            None => {
-                                ui.label(RichText::new(tr(lang, "dbview_pick")).size(13.0).color(pal.text_faint));
-                                if env.db_titles.is_empty() {
-                                    ui.label(RichText::new(tr(lang, "dbview_none")).color(pal.text_faint));
-                                }
-                                for t in env.db_titles {
-                                    if ui.button(format!("⊞  {t}")).clicked() {
-                                        blocks[i].text = t.clone();
-                                        out.changed = true;
-                                    }
-                                }
-                            }
-                        });
-                    });
-                ui.add_space(4.0);
-                ui.allocate_rect(ui.min_rect(), Sense::hover())
-            }
-            BlockKind::Meeting => {
-                meeting_card::meeting_card(ui, blocks, i, width, env, out)
-            }
-            BlockKind::Toc => {
-                let heads: Vec<(u64, u8, String)> = blocks
-                    .iter()
-                    .filter_map(|b| match b.kind {
-                        BlockKind::Heading(l) => Some((b.id, l, inline::strip(&b.text))),
-                        _ => None,
-                    })
-                    .collect();
-                let r = ui.vertical(|ui| {
-                    ui.set_width(width);
-                    ui.style_mut().interaction.selectable_labels = false;
-                    if heads.is_empty() {
-                        ui.label(RichText::new(tr(env.lang, "toc_empty")).color(pal.text_faint));
-                    }
-                    for (id, level, text) in heads {
-                        ui.horizontal(|ui| {
-                            ui.add_space(f32::from(level - 1) * 18.0);
-                            let label =
-                                if text.trim().is_empty() { tr(env.lang, "untitled").to_string() } else { text };
-                            let resp = ui.add(
-                                egui::Label::new(RichText::new(label).color(pal.text_secondary).underline())
-                                    .sense(Sense::click()),
-                            );
-                            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                                self.toc_target = Some(id);
-                            }
-                        });
-                    }
-                });
-                let resp = ui.interact(r.response.rect, ui.scope_id().with(("toc", bid)), Sense::click());
-                if resp.clicked() && self.toc_target.is_none() {
-                    self.sel_anchor = None;
-                    self.selected = Some(bid);
-                }
-                resp
-            }
-            BlockKind::Image { path } => {
-                let abs = env.root.join(path);
-                let blocks_width = blocks[i].width;
-                let blocks_align = blocks[i].align;
-                let mut new_align: Option<u8> = None;
-                let mut new_width: Option<u16> = None;
-                let mut size_began = false;
-                let r = ui.vertical(|ui| {
-                    ui.set_width(width);
-                    if abs.is_file() {
-                        let uri = format!("file://{}", abs.display());
-                        let mut img = egui::Image::new(uri).corner_radius(CornerRadius::same(6)).sense(Sense::click());
-                        // explicit size from the file header: never depends on the decode state of the loader
-                        let mut shown = Vec2::new(width, 0.0);
-                        if let Some((iw, ih)) = image_dims(&abs) {
-                            let (iw, ih) = (iw as f32, ih as f32);
-                            let pct = blocks_width;
-                            let k = if (10..100).contains(&pct) {
-                                width * f32::from(pct) / 100.0 / iw
-                            } else {
-                                (width / iw).min(520.0 / ih).min(1.0)
-                            };
-                            shown = Vec2::new(iw * k, ih * k);
-                            img = img.fit_to_exact_size(shown);
-                        } else {
-                            img = img.max_width(width).max_height(520.0);
-                        }
-                        // left, centre or right in the column
-                        ui.add_space(0.0);
-                        let pad = match blocks_align {
-                            1 => 0.0,
-                            2 => (width - shown.x).max(0.0),
-                            _ => ((width - shown.x) / 2.0).max(0.0),
-                        };
-                        ui.horizontal(|ui| {
-                            ui.add_space(pad);
-                            let resp = ui.add(img);
-                            if resp.clicked() {
-                                self.sel_anchor = None;
-                                self.selected = Some(bid);
-                            }
-                            if resp.double_clicked() {
-                                deferred.push(Deferred::Open(path.clone()));
-                            }
-                            resp.context_menu(|ui| {
-                                for (a, key) in [(1u8, "img_left"), (0, "img_center"), (2, "img_right")] {
-                                    if ui.selectable_label(blocks_align == a, tr(env.lang, key)).clicked() {
-                                        new_align = Some(a);
-                                        ui.close();
-                                    }
-                                }
-                            });
-                            // a handle on the corner: drag to resize, double click to go back to the natural size
-                            let handle_id = ui.make_persistent_id(("img-size", bid));
-                            let corner = if blocks_align == 2 {
-                                resp.rect.left_bottom() + egui::vec2(12.0, -12.0)
-                            } else {
-                                resp.rect.right_bottom() - egui::vec2(12.0, 12.0)
-                            };
-                            let grab = egui::Rect::from_center_size(corner, egui::vec2(18.0, 18.0));
-                            let active = ui.ctx().is_being_dragged(handle_id);
-                            if resp.hovered() || self.selected == Some(bid) || active || ui.rect_contains_pointer(grab)
-                            {
-                                let h = ui.interact(grab, handle_id, Sense::click_and_drag());
-                                ui.painter().circle(grab.center(), 6.0, Color32::WHITE, Stroke::new(1.5, pal.accent));
-                                let h = h.on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
-                                if h.drag_started() {
-                                    size_began = true;
-                                }
-                                if h.dragged() {
-                                    if let Some(p) = ui.input(|i| i.pointer.interact_pos()) {
-                                        let w = match blocks_align {
-                                            1 => p.x - resp.rect.min.x,
-                                            2 => resp.rect.max.x - p.x,
-                                            _ => 2.0 * (p.x - resp.rect.center().x),
-                                        };
-                                        let pct = (w / width * 100.0).round().clamp(10.0, 100.0) as u16;
-                                        new_width = Some(if pct >= 100 { 0 } else { pct });
-                                    }
-                                }
-                                if h.double_clicked() {
-                                    new_width = Some(0);
-                                }
-                            }
-                        });
-                    } else {
-                        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 64.0), Sense::hover());
-                        ui.painter().rect_filled(rect, CornerRadius::same(6), pal.code_bg);
-                        ui.painter().text(
-                            rect.center(),
-                            Align2::CENTER_CENTER,
-                            format!("🖼  {path}"),
-                            FontId::proportional(13.0),
-                            pal.text_secondary,
-                        );
-                    }
-                    let id = text_id(bid);
-                    self.apply_focus_request(ui.ctx(), &blocks[i], id);
-                    let before = blocks[i].text.clone();
-                    let o = egui::TextEdit::singleline(&mut blocks[i].text)
-                        .id(id)
-                        .frame(egui::Frame::NONE)
-                        .desired_width(width)
-                        .align(egui::Align2::CENTER_CENTER)
-                        .font(FontId::proportional(13.0))
-                        .text_color(pal.text_secondary)
-                        .hint_text(RichText::new(tr(env.lang, "caption")).color(pal.text_faint))
-                        .show(ui);
-                    if o.response.response.has_focus() {
-                        self.focused_block = Some(bid);
-                    }
-                    if blocks[i].text != before {
-                        let mut snap = blocks.to_vec();
-                        snap[i].text = before;
-                        self.record(env.key, &snap, Some(&format!("t{bid}")));
-                        out.changed = true;
-                    }
-                });
-                if size_began {
-                    let snap = blocks.to_vec();
-                    self.record(env.key, &snap, Some(&format!("w{bid}")));
-                }
-                if let Some(a) = new_align {
-                    if blocks[i].align != a {
-                        let snap = blocks.to_vec();
-                        self.record(env.key, &snap, None);
-                        blocks[i].align = a;
-                        out.changed = true;
-                    }
-                }
-                if let Some(w) = new_width {
-                    if blocks[i].width != w {
-                        blocks[i].width = w;
-                        out.changed = true;
-                    }
-                }
-                r.response
-            }
+            BlockKind::Equation => self.equation_ui(
+                ui,
+                blocks,
+                &BlockCx { i, width, env },
+                &mut Sink { deferred: &mut *deferred, out: &mut *out },
+            ),
+            BlockKind::Bookmark { url } => self.bookmark_ui(
+                ui,
+                blocks,
+                &BlockCx { i, width, env },
+                &mut Sink { deferred: &mut *deferred, out: &mut *out },
+                url,
+            ),
+            BlockKind::Table => self.table_ui(
+                ui,
+                blocks,
+                &BlockCx { i, width, env },
+                &mut Sink { deferred: &mut *deferred, out: &mut *out },
+            ),
+            BlockKind::Database => self.database_ui(
+                ui,
+                blocks,
+                &BlockCx { i, width, env },
+                &mut Sink { deferred: &mut *deferred, out: &mut *out },
+            ),
+            BlockKind::Meeting => meeting_card::meeting_card(ui, blocks, i, width, env, out),
+            BlockKind::Toc => self.toc_ui(ui, blocks, &BlockCx { i, width, env }),
+            BlockKind::Image { path } => self.image_ui(
+                ui,
+                blocks,
+                &BlockCx { i, width, env },
+                &mut Sink { deferred: &mut *deferred, out: &mut *out },
+                path,
+            ),
             BlockKind::File { path } => {
                 let name = if blocks[i].text.is_empty() { path.clone() } else { blocks[i].text.clone() };
                 let size = std::fs::metadata(env.root.join(path)).map(|m| m.len()).unwrap_or(0);
@@ -2221,98 +1728,20 @@ impl EditorState {
                 }
                 resp
             }
-            BlockKind::Code { lang } => {
-                let id = text_id(bid);
-                self.apply_focus_request(ui.ctx(), &blocks[i], id);
-                let mut lang_text = lang.clone();
-                let before = blocks[i].text.clone();
-                let r = egui::Frame::NONE
-                    .fill(pal.code_bg)
-                    .corner_radius(CornerRadius::same(6))
-                    .inner_margin(egui::Margin { left: 16, right: 16, top: 8, bottom: 12 })
-                    .show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            ui.set_width(width - 32.0);
-                            if lang.trim().eq_ignore_ascii_case("mermaid") {
-                                mermaid_view(ui, bid, &blocks[i].text, pal, env.lang);
-                            }
-                            egui::TextEdit::singleline(&mut lang_text)
-                                .id(Id::unique(("nc-lang", bid)))
-                                .frame(egui::Frame::NONE)
-                                .desired_width(140.0)
-                                .font(FontId::proportional(12.0))
-                                .text_color(pal.text_secondary)
-                                .hint_text(RichText::new("plain text").size(12.0).color(pal.text_faint))
-                                .show(ui);
-                            let o = egui::TextEdit::multiline(&mut blocks[i].text)
-                                .id(id)
-                                .frame(egui::Frame::NONE)
-                                .code_editor()
-                                .desired_rows(1)
-                                .desired_width(f32::INFINITY)
-                                .lock_focus(true)
-                                .show(ui);
-                            if o.response.response.has_focus() {
-                                self.focused_block = Some(bid);
-                                self.track_rows(&o);
-                            }
-                        });
-                    });
-                if lang_text != *lang {
-                    let snap = blocks.to_vec();
-                    blocks[i].kind = BlockKind::Code { lang: lang_text };
-                    self.record(env.key, &snap, Some(&format!("l{bid}")));
-                    out.changed = true;
-                }
-                if blocks[i].text != before {
-                    let mut snap = blocks.to_vec();
-                    snap[i].text = before;
-                    self.record(env.key, &snap, Some(&format!("t{bid}")));
-                    out.changed = true;
-                }
-                r.response
-            }
-            BlockKind::Callout { icon } => {
-                let has_kids = blocks.get(i + 1).is_some_and(|b| b.depth > blocks[i].depth);
-                let fr = egui::Frame::NONE
-                    .fill(pal.callout_bg)
-                    .corner_radius(if has_kids {
-                        CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }
-                    } else {
-                        CornerRadius::same(6)
-                    })
-                    .inner_margin(egui::Margin { left: 12, right: 16, top: 12, bottom: if has_kids { 4 } else { 12 } })
-                    .show(ui, |ui| {
-                        ui.set_width(width - 28.0);
-                        ui.horizontal_top(|ui| {
-                            let ir = ui
-                                .add(egui::Button::new(RichText::new(icon).size(19.0)).min_size(Vec2::new(28.0, 24.0)));
-                            if ir.clicked() {
-                                self.icon_menu = Some(bid);
-                            }
-                            if self.icon_menu == Some(bid) {
-                                let mut chosen = None;
-                                let a = egui::Area::new(Id::unique(("nc-callout-icon", bid)))
-                                    .order(egui::Order::Foreground)
-                                    .fixed_pos(ir.rect.left_bottom())
-                                    .show(ui.ctx(), |ui| {
-                                        egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                            chosen = widgets::emoji_grid(ui, pal, "", false);
-                                        });
-                                    });
-                                if let Some(e) = chosen {
-                                    deferred.push(Deferred::SetCalloutIcon(i, e));
-                                    self.icon_menu = None;
-                                } else if a.response.clicked_elsewhere() && !ir.clicked() {
-                                    self.icon_menu = None;
-                                }
-                            }
-                            let w = ui.available_width();
-                            self.rich_text(ui, blocks, i, w, env, out);
-                        });
-                    });
-                fr.response
-            }
+            BlockKind::Code { lang } => self.code_ui(
+                ui,
+                blocks,
+                &BlockCx { i, width, env },
+                &mut Sink { deferred: &mut *deferred, out: &mut *out },
+                lang,
+            ),
+            BlockKind::Callout { icon } => self.callout_ui(
+                ui,
+                blocks,
+                &BlockCx { i, width, env },
+                &mut Sink { deferred: &mut *deferred, out: &mut *out },
+                icon,
+            ),
             _ => {
                 let r = ui.horizontal_top(|ui| {
                     let line_h = base_for(&kind, &blocks[i].color, pal).size * 1.5;
@@ -2611,10 +2040,14 @@ impl EditorState {
     }
 }
 
+mod callout;
 mod helpers;
+mod image_block;
 mod keys;
 mod meeting_card;
 mod richpaste;
+mod simple;
+mod table;
 pub use helpers::human_size;
 use helpers::number_label;
 

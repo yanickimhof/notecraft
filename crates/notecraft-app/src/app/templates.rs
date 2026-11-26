@@ -27,7 +27,11 @@ pub fn template_results(ws: &Workspace, query: &str) -> Vec<SearchResult> {
     let q = query.trim().to_lowercase();
     ws.children(Some(&root))
         .into_iter()
-        .filter(|c| matches!(c.doc, DocId::Page(_)) && !is_notes_title(&c.title) && (q.is_empty() || c.title.to_lowercase().contains(&q)))
+        .filter(|c| {
+            matches!(c.doc, DocId::Page(_))
+                && !is_notes_title(&c.title)
+                && (q.is_empty() || c.title.to_lowercase().contains(&q))
+        })
         .map(|c| SearchResult { doc: c.doc, title: c.title, icon: c.icon, snippet: String::new(), path: String::new() })
         .collect()
 }

@@ -479,8 +479,8 @@ pub fn delete_visible(text: &str, pos: usize, backward: bool) -> Option<(String,
     }
 }
 
-/// The colour span left open at the end of `s` (its full opening tag), if any.
-fn open_color_tag(s: &str) -> Option<String> {
+/// Every colour tag still open at the end of `s`, outermost first.
+fn open_color_tags(s: &str) -> Vec<String> {
     let mut stack: Vec<String> = Vec::new();
     let mut i = 0;
     while i < s.len() {
@@ -499,7 +499,7 @@ fn open_color_tag(s: &str) -> Option<String> {
         }
         i += rest.chars().next().map_or(1, |c| c.len_utf8());
     }
-    stack.pop()
+    stack
 }
 
 /// `text` without any colour span (the tags go, the words stay).
@@ -539,65 +539,68 @@ fn drop_empty_spans(s: &str) -> String {
     s
 }
 
+/// Moves the edges of a byte range out of the colour tags they fall inside: the start goes back to the
+/// start of the tag, the end forward to the end of it.
+fn snap_out_of_color_tags(text: &str, mut start: usize, mut end: usize) -> (usize, usize) {
+    let mut at = 0;
+    while at < text.len() {
+        let rest = &text[at..];
+        let len = if rest.starts_with(COLOR_OPEN) {
+            rest.find("\">").map(|g| g + 2)
+        } else if rest.starts_with("</span>") {
+            Some(7)
+        } else {
+            None
+        };
+        match len {
+            Some(l) => {
+                let (t0, t1) = (at, at + l);
+                if start > t0 && start < t1 {
+                    start = t0;
+                }
+                if end > t0 && end < t1 {
+                    end = t1;
+                }
+                at = t1;
+            }
+            None => at += rest.chars().next().map_or(1, |c| c.len_utf8()),
+        }
+    }
+    (start, end.max(start))
+}
+
 /// Colour (a name such as `red`, or `None` for the default) on a selection of chars.
 /// Colours already inside the selection are replaced; a span that the selection cuts is
 /// closed before it and reopened after it. Returns the new text and selection.
 pub fn set_color(text: &str, sel: (usize, usize), color: Option<&str>) -> (String, (usize, usize)) {
     let (a, b) = if sel.0 <= sel.1 { sel } else { (sel.1, sel.0) };
-    let (ba, bb) = (char_to_byte(text, a), char_to_byte(text, b));
+    // a selection edge never cuts through a colour tag: it moves out of it
+    let (ba, bb) = snap_out_of_color_tags(text, char_to_byte(text, a), char_to_byte(text, b));
     let mut before = text[..ba].to_string();
     let mut after = text[bb..].to_string();
     let inner = strip_colors(&text[ba..bb]);
-    // a span opened before the selection: it stops at the selection and starts again after it
-    if let Some(tag) = open_color_tag(&before) {
-        let closes_inside = {
-            let mut depth = 0i32;
-            let mut closed = false;
-            let mut rest = &text[ba..bb];
-            while !rest.is_empty() {
-                if rest.starts_with(COLOR_OPEN) {
-                    depth += 1;
-                } else if rest.starts_with("</span>") {
-                    if depth == 0 {
-                        closed = true;
-                        break;
-                    }
-                    depth -= 1;
-                }
-                rest = &rest[rest.chars().next().map_or(1, |c| c.len_utf8())..];
-            }
-            closed
-        };
+    // spans open before the selection stop at it; spans still open at its end start again after it
+    // (the selection may cut several nested spans)
+    let mut stack = open_color_tags(&before);
+    for _ in 0..stack.len() {
         before.push_str("</span>");
-        if !closes_inside {
-            after = format!("{tag}{after}");
-        }
     }
-    // a span opened inside the selection and closed after it
-    {
-        let mut depth = 0i32;
-        let mut rest = &text[ba..bb];
-        let mut last: Option<String> = None;
-        while !rest.is_empty() {
-            if rest.starts_with(COLOR_OPEN) {
-                if let Some(gt) = rest.find("\">") {
-                    depth += 1;
-                    last = Some(rest[..gt + 2].to_string());
-                    rest = &rest[gt + 2..];
-                    continue;
-                }
-            } else if rest.starts_with("</span>") {
-                depth -= 1;
-                rest = &rest[7..];
+    let mut rest = &text[ba..bb];
+    while !rest.is_empty() {
+        if rest.starts_with(COLOR_OPEN) {
+            if let Some(gt) = rest.find("\">") {
+                stack.push(rest[..gt + 2].to_string());
+                rest = &rest[gt + 2..];
                 continue;
             }
-            rest = &rest[rest.chars().next().map_or(1, |c| c.len_utf8())..];
+        } else if rest.starts_with("</span>") {
+            stack.pop();
+            rest = &rest[7..];
+            continue;
         }
-        // the part of that span after the selection keeps its colour
-        if let (true, Some(tag)) = (depth > 0, last) {
-            after = format!("{tag}{after}");
-        }
+        rest = &rest[rest.chars().next().map_or(1, |c| c.len_utf8())..];
     }
+    after = format!("{}{after}", stack.concat());
     let before = drop_empty_spans(&before);
     let after = drop_empty_spans(&after);
     let (open, close) = match color {

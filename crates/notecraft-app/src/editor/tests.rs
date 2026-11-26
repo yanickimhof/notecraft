@@ -353,3 +353,130 @@ fn simple_table_keeps_typed_spaces_and_arrows_move_between_cells() {
     let md = h.state().1[0].text.clone();
     assert!(md.contains("| c | d? |"), "{md}");
 }
+
+/// Draws `n` sections (heading, formatted paragraph, list, to-do, small table) for a few frames and returns
+/// the average time of a frame in milliseconds, after the first one (which builds the caches).
+fn average_frame_ms(sections: usize, frames: usize) -> (usize, f64, f64) {
+    let mut md = String::new();
+    for i in 0..sections {
+        md.push_str(&format!(
+            "## Section {i}\n\nSome **bold**, *italic* and `code` text with a [[link]] and <span style=\"color:red\">colour</span> number {i}.\n\n- first item\n- second item\n\n- [ ] a task {i}\n\n| a | b |\n| --- | --- |\n| {i} | x |\n\n"
+        ));
+    }
+    let mut blocks = notecraft_core::blocks::from_markdown(&md);
+    let count = blocks.len();
+    let pal = Palette::light();
+    let ctx = egui::Context::default();
+    theme::apply(&ctx, &pal);
+    let titles = HashMap::new();
+    let meeting = crate::meeting::View::default();
+    let embed = |_: &mut Ui, _: u64, _: &str| {};
+    let mut state = EditorState::default();
+    let root = Path::new(".");
+    let mut times = Vec::new();
+    for f in 0..frames {
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(900.0, 1000.0))),
+            // a pointer moving over the page, as when someone reads it
+            events: vec![egui::Event::PointerMoved(egui::pos2(300.0, 100.0 + 40.0 * f as f32))],
+            ..Default::default()
+        };
+        let t = std::time::Instant::now();
+        let mut full = ctx.run_ui(raw, |root_ui| {
+            egui::ScrollArea::vertical().show(root_ui, |ui| {
+                let env = Env {
+                    pal: &pal,
+                    lang: Lang::En,
+                    root,
+                    titles: &titles,
+                    key: "load",
+                    meeting: &meeting,
+                    db_titles: &[],
+                    embed: &embed,
+                };
+                state.show(ui, &mut blocks, &env);
+            });
+        });
+        full.textures_delta.clear();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    let first = times[0];
+    let rest = &times[1..];
+    (count, first, rest.iter().sum::<f64>() / rest.len() as f64)
+}
+
+/// A long page must stay usable: the frame time may grow with the page, but not run away.
+#[test]
+fn a_page_of_a_thousand_blocks_draws_in_reasonable_time() {
+    let (n, first, avg) = average_frame_ms(200, 6);
+    eprintln!("{n} blocks: first frame {first:.1} ms, then {avg:.1} ms on average");
+    // generous: this runs in a debug build, on any machine
+    assert!(avg < 400.0, "{n} blocks took {avg:.1} ms per frame");
+}
+
+/// Run with `cargo test --release -p notecraft-app big_pages -- --ignored --nocapture` to see the curve.
+#[test]
+#[ignore]
+fn big_pages_curve() {
+    for sections in [100, 400, 1600, 3200] {
+        let (n, first, avg) = average_frame_ms(sections, 6);
+        eprintln!("{n:>6} blocks: first frame {first:>8.1} ms, then {avg:>8.1} ms");
+    }
+}
+
+/// Content height of a long page after a few frames, scrolled far down, with or without skipping rows.
+fn content_height(skip: bool) -> (f32, usize) {
+    let mut md = String::new();
+    for i in 0..300 {
+        md.push_str(&format!("## Section {i}\n\nA paragraph with **bold** and some more words so that it wraps on a narrow page, number {i}, and again a few more words to be sure.\n\n- item one\n- item two\n\n> a quote {i}\n\n---\n\n"));
+    }
+    let mut blocks = notecraft_core::blocks::from_markdown(&md);
+    let pal = Palette::light();
+    let ctx = egui::Context::default();
+    theme::apply(&ctx, &pal);
+    let titles = HashMap::new();
+    let meeting = crate::meeting::View::default();
+    let embed = |_: &mut Ui, _: u64, _: &str| {};
+    let mut state = EditorState::default();
+    let root = Path::new(".");
+    let mut height = 0.0;
+    let mut skipped = 0;
+    for _ in 0..5 {
+        if !skip {
+            state.heights.clear();
+        }
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(900.0, 1000.0))),
+            ..Default::default()
+        };
+        let mut full = ctx.run_ui(raw, |root_ui| {
+            egui::ScrollArea::vertical().vertical_scroll_offset(9000.0).show(root_ui, |ui| {
+                let env = Env {
+                    pal: &pal,
+                    lang: Lang::En,
+                    root,
+                    titles: &titles,
+                    key: "skip",
+                    meeting: &meeting,
+                    db_titles: &[],
+                    embed: &embed,
+                };
+                let start = ui.min_rect().min.y;
+                state.show(ui, &mut blocks, &env);
+                height = ui.min_rect().max.y - start;
+            });
+        });
+        full.textures_delta.clear();
+        skipped = state.heights.len();
+    }
+    (height, skipped)
+}
+
+/// Leaving rows out must not change the length of the page, or the scroll bar would jump.
+#[test]
+fn skipping_far_rows_keeps_the_page_height() {
+    let (full, _) = content_height(false);
+    let (skipping, known) = content_height(true);
+    assert!(known > 100, "the heights were not recorded");
+    assert!((full - skipping).abs() < 2.0, "page height {full} drawn in full, {skipping} with rows skipped");
+}

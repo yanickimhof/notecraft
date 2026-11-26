@@ -2,6 +2,22 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.5.8 (2026-11-27)
+
+### Added
+- A network guard: every connection of the app (local model, cloud AI, model downloads, publishing, link previews) goes through one gatekeeper that applies a rule per purpose and logs the attempt. Settings, AI: a network lockdown switch (nothing leaves this Mac) and a list of the latest connection attempts.
+- A warning when Ollama answers on the whole network instead of this Mac only.
+- Long pages stay smooth: blocks far outside the window are no longer redrawn (a 10 000-block page drew in about 54 ms per frame, now about 26 ms, and a page of a few thousand blocks stays under one frame).
+
+### Changed
+- The editor file was split: the table, image, callout, code, bookmark, equation, contents, database blocks and the meeting card now have their own modules. The block drawing function went from 1 160 lines to about 170.
+- Pasted links are never fetched when they point at this Mac or a private network.
+
+### Security
+- HTML export no longer writes links that run code (javascript:, data:, file:).
+- A colour change on a selection that cut through a colour tag, or across nested colours, could damage the text. Fixed.
+- Pasting HTML with some accented characters in unusual tags could crash the import. Fixed.
+
 ## 0.5.7 (2026-11-26)
 
 ### Added

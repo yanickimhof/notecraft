@@ -867,9 +867,12 @@ impl NcApp {
                         use std::sync::atomic::Ordering;
                         ui.separator();
                         let busy = self.ai.pull.is_some();
-                        for (tag, size) in
-                            [("qwen2.5:7b", "4.7 GB"), ("llama3.2", "2 GB"), ("qwen2.5:3b", "1.9 GB"), ("qwen2.5:1.5b", "1 GB")]
-                        {
+                        for (tag, size) in [
+                            ("qwen2.5:7b", "4.7 GB"),
+                            ("llama3.2", "2 GB"),
+                            ("qwen2.5:3b", "1.9 GB"),
+                            ("qwen2.5:1.5b", "1 GB"),
+                        ] {
                             if models.iter().any(|m| m == tag || m.starts_with(&format!("{tag}:"))) {
                                 continue;
                             }
@@ -878,7 +881,9 @@ impl NcApp {
                                     let (d, t) = (job.done.load(Ordering::Relaxed), job.total.load(Ordering::Relaxed));
                                     let pct = (d * 100).checked_div(t).map_or("…".to_string(), |v| format!("{v}%"));
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new(format!("{tag} {pct}")).size(13.0).color(pal.text_faint));
+                                        ui.label(
+                                            RichText::new(format!("{tag} {pct}")).size(13.0).color(pal.text_faint),
+                                        );
                                         if text_link(ui, &pal, tr(lang, "cancel")).clicked() {
                                             job.cancel.store(true, Ordering::Relaxed);
                                         }
@@ -950,6 +955,40 @@ impl NcApp {
                 self.ai.models_error = None;
                 self.refresh_models();
             }
+        }
+        if local {
+            // the model server itself must not be reachable from the network either
+            let stale = self.ai.ollama_exposed.is_none_or(|(at, _)| at.elapsed().as_secs() > 60);
+            if stale {
+                let v = notecraft_ai::ollama_listens_on_network().unwrap_or(false);
+                self.ai.ollama_exposed = Some((std::time::Instant::now(), v));
+            }
+            if self.ai.ollama_exposed.is_some_and(|(_, v)| v) {
+                crate::widgets::hint(ui, &pal, tr(lang, "ollama_exposed"));
+            }
+        }
+        {
+            // lockdown: nothing leaves this Mac at all, and what the app tried to reach
+            let mut lock = self.prefs.ai.network_lockdown;
+            srow(ui, &pal, tr(lang, "net_lockdown"), tr(lang, "net_lockdown_sub"), None, |ui| {
+                crate::widgets::toggle(ui, &pal, &mut lock);
+            });
+            if lock != self.prefs.ai.network_lockdown {
+                self.prefs.ai.network_lockdown = lock;
+                notecraft_net::set_lockdown(lock);
+            }
+            ui.collapsing(RichText::new(tr(lang, "net_activity")).size(13.0).color(pal.text_secondary), |ui| {
+                let events = notecraft_net::recent();
+                if events.is_empty() {
+                    ui.label(RichText::new(tr(lang, "net_none")).size(12.0).color(pal.text_faint));
+                }
+                for e in events.iter().take(12) {
+                    let (mark, col) = if e.allowed { ("\u{2713}", pal.text_faint) } else { ("\u{2715}", pal.danger) };
+                    ui.label(
+                        RichText::new(format!("{mark}  {}  ·  {}", e.purpose.label(), e.host)).size(12.0).color(col),
+                    );
+                }
+            });
         }
         if let Some(m) = pull_start {
             self.start_pull(&m);

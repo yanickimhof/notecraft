@@ -158,35 +158,22 @@ impl Engine {
     }
 }
 
-/// `localhost`, `127.x.x.x` or `[::1]`.
-pub fn is_local_url(url: &str) -> bool {
-    let rest = url.trim().split("://").nth(1).unwrap_or(url.trim());
-    let host = rest.split(['/', '?']).next().unwrap_or("");
-    let host = host.rsplit('@').next().unwrap_or("");
-    let host = if host.starts_with('[') {
-        host.split(']').next().unwrap_or("").trim_start_matches('[')
-    } else {
-        host.split(':').next().unwrap_or("")
-    };
-    // a real loopback address, never a name that merely starts with "127."
-    host.eq_ignore_ascii_case("localhost")
-        || host.parse::<std::net::IpAddr>().map(|ip| ip.is_loopback()).unwrap_or(false)
-}
+pub use notecraft_net::is_local_url;
 
-static ALLOW_REMOTE_OLLAMA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Lets the app talk to an Ollama that is not on this Mac (off by default, set from the preferences file).
+/// Lets the app talk to an Ollama that is not on this Mac (off by default).
 pub fn set_allow_remote_ollama(on: bool) {
-    ALLOW_REMOTE_OLLAMA.store(on, std::sync::atomic::Ordering::Relaxed);
+    notecraft_net::set_allow_remote_local_ai(on);
 }
 
-/// Network guard: the local engine only talks to this Mac unless the user allowed otherwise.
+/// Network guard for the local engine.
 fn guard_local(url: &str) -> Result<(), AiError> {
-    if is_local_url(url) || ALLOW_REMOTE_OLLAMA.load(std::sync::atomic::Ordering::Relaxed) {
-        Ok(())
-    } else {
-        Err(AiError::RemoteBlocked(url.trim().to_string()))
-    }
+    notecraft_net::check(notecraft_net::Purpose::LocalAi, url)
+        .map_err(|_| AiError::RemoteBlocked(url.trim().to_string()))
+}
+
+/// Network guard for a cloud service the user chose.
+fn guard_cloud(url: &str) -> Result<(), AiError> {
+    notecraft_net::check(notecraft_net::Purpose::CloudAi, url).map_err(|b| AiError::Network(b.to_string()))
 }
 
 /// How long to wait.
@@ -333,6 +320,19 @@ pub fn complete_with_retry(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Res
     Err(last)
 }
 
+/// Whether something listens on the Ollama port on every network interface (not only on this Mac).
+/// `None` when it cannot be told (no `lsof`, nothing listening).
+pub fn ollama_listens_on_network() -> Option<bool> {
+    let out =
+        std::process::Command::new("/usr/sbin/lsof").args(["-nP", "-iTCP:11434", "-sTCP:LISTEN"]).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let names: Vec<&str> = text.lines().skip(1).filter_map(|l| l.split_whitespace().rev().nth(1)).collect();
+    if names.is_empty() {
+        return None;
+    }
+    Some(names.iter().any(|n| n.starts_with('*') || n.starts_with("0.0.0.0") || n.starts_with("[::]")))
+}
+
 /// Whether the Ollama app or command line tool is installed on this Mac (it may not be running).
 pub fn ollama_installed() -> bool {
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
@@ -423,6 +423,7 @@ pub fn claude_models(url: &str, api_key: &str, t: Timeouts) -> Result<Vec<String
     if api_key.trim().is_empty() {
         return Err(AiError::NoApiKey);
     }
+    guard_cloud(url)?;
     let base = trim_url(url);
     let mut resp = agent(t)
         .get(format!("{base}/v1/models?limit=100"))
@@ -467,6 +468,7 @@ fn compatible_models(url: &str, api_key: &str, t: Timeouts, keep: fn(&str) -> bo
     if api_key.trim().is_empty() {
         return Err(AiError::NoApiKey);
     }
+    guard_cloud(url)?;
     let base = trim_url(url);
     let mut resp = agent(t)
         .get(format!("{base}/v1/models"))
@@ -630,6 +632,7 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
             if api_key.trim().is_empty() {
                 return Err(AiError::NoApiKey);
             }
+            guard_cloud(url)?;
             let base = trim_url(url);
             let mut resp = agent(t)
                 .post(format!("{base}/v1/messages"))
@@ -653,6 +656,7 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
             if model.trim().is_empty() {
                 return Err(AiError::NoModel);
             }
+            guard_cloud(url)?;
             let base = trim_url(url);
             let mut resp = agent(t)
                 .post(format!("{base}/v1/chat/completions"))

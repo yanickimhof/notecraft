@@ -473,7 +473,8 @@ pub fn table_cells(text: &str) -> Vec<Vec<String>> {
 pub fn cells_to_text(cells: &[Vec<String>]) -> String {
     let width = cells.iter().map(Vec::len).max().unwrap_or(1).max(1);
     let row = |r: &Vec<String>| {
-        let mut parts: Vec<String> = r.iter().map(|c| c.replace('|', "\\|").replace('\r', "").replace('\n', "<br>")).collect();
+        let mut parts: Vec<String> =
+            r.iter().map(|c| c.replace('|', "\\|").replace('\r', "").replace('\n', "<br>")).collect();
         parts.resize(width, String::new());
         format!("| {} |", parts.join(" | "))
     };

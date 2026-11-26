@@ -1034,6 +1034,11 @@ impl eframe::App for NcApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let _timer = FrameTimer::start();
         notecraft_ai::set_allow_remote_ollama(self.prefs.ai.allow_remote_ollama);
+        notecraft_net::set_lockdown(self.prefs.ai.network_lockdown);
+        // the built-in note templates become editable pages, once
+        if self.ws.is_some() && !self.prefs.meeting.notes_seeded && !self.prefs.meeting.seed_failed {
+            self.ensure_templates();
+        }
         let ctx = ui.ctx().clone();
         let dark = match self.prefs.theme {
             ThemeChoice::Dark => true,
