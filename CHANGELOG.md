@@ -17,8 +17,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - Images can be resized (drag a corner handle) and aligned left, centre or right; size and place are kept on the published page.
 - Mermaid diagrams and equations appear as pictures on published pages and in the preview.
 - Pasting from Outlook, Word or a web page keeps headings, lists, bold, links and tables.
-- Database tables: drag a column edge to resize it, long text wraps, and the keyboard moves between cells (arrows, Tab, Enter).
+- Database tables: drag a column edge to resize it, long text wraps, the keyboard moves between cells (arrows, Tab, Enter), and a tag's colour can be changed from its cell menu.
 - Command click on a link opens it.
+- Automatic backups are thinned like Time Machine: hourly for a day, daily for a month, weekly for a year, then yearly.
 
 ### Changed
 - Interface refinements.

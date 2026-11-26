@@ -148,7 +148,7 @@ pub fn relative_time(rfc3339: &str, lang: crate::i18n::Lang) -> String {
     } else if secs < 86_400 {
         (secs / 3600, "h", "h")
     } else {
-        return t.to_zoned(jiff::tz::TimeZone::UTC).strftime("%Y-%m-%d").to_string();
+        return t.to_zoned(jiff::tz::TimeZone::system()).strftime("%Y-%m-%d %H:%M").to_string();
     };
     if fr {
         format!("il y a {n} {unit_fr}")

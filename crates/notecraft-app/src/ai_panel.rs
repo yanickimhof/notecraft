@@ -178,6 +178,8 @@ pub struct AiState {
     pub grok_error: Option<String>,
     /// When both lists were last asked for (they are asked again when the AI page of Settings opens).
     pub checked: Option<Instant>,
+    /// The cloud model lists were asked for once in this session (each ask reads a Keychain item).
+    pub cloud_checked: bool,
 }
 
 impl NcApp {

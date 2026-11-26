@@ -88,14 +88,33 @@ pub fn load_key(p: Provider) -> Option<String> {
 }
 
 /// True when a key is stored in the Keychain (not counting the environment variable).
+/// Only the item's attributes are asked for, never the secret, so macOS shows no prompt.
 pub fn has_key(p: Provider) -> bool {
+    has_item(p.account())
+}
+
+/// True when a key is stored or given by the environment, without reading the secret.
+pub fn is_available(p: Provider) -> bool {
+    has_key(p) || std::env::var(p.env_var()).is_ok_and(|k| !k.trim().is_empty())
+}
+
+/// True when this Keychain item exists. The secret is not read, so there is no password prompt.
+pub fn has_item(account: &str) -> bool {
     #[cfg(target_os = "macos")]
     {
-        security_framework::passwords::get_generic_password(SERVICE, p.account()).is_ok()
+        use security_framework::item::{ItemClass, ItemSearchOptions, Limit};
+        ItemSearchOptions::new()
+            .class(ItemClass::generic_password())
+            .service(SERVICE)
+            .account(account)
+            .limit(Limit::Max(1))
+            .load_attributes(true)
+            .search()
+            .is_ok_and(|found| !found.is_empty())
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = p;
+        let _ = account;
         false
     }
 }

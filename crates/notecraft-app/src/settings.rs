@@ -379,9 +379,9 @@ impl NcApp {
         let pal = self.pal;
         let lang = self.prefs.lang;
         if self.publish_cfg.status.is_none() {
-            let tok =
-                keychain::load_item(keychain::PUBLISH_TOKEN_ACCOUNT).map(|t| keychain::masked(&t)).unwrap_or_default();
-            self.publish_cfg.status = Some(tok);
+            // only whether a token exists: reading it would make macOS ask for the password
+            let tok = if keychain::has_item(keychain::PUBLISH_TOKEN_ACCOUNT) { "stored" } else { "" };
+            self.publish_cfg.status = Some(tok.to_string());
         }
         let tok = self.publish_cfg.status.clone().unwrap_or_default();
         let ready = !tok.is_empty();
@@ -414,7 +414,11 @@ impl NcApp {
                     egui::TextEdit::singleline(&mut self.publish_cfg.token_input)
                         .password(true)
                         .desired_width(f32::INFINITY)
-                        .hint_text(if tok.is_empty() { "…".to_string() } else { tok.clone() }),
+                        .hint_text(if tok.is_empty() {
+                            "…".to_string()
+                        } else {
+                            "••••••••".to_string()
+                        }),
                 );
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
@@ -543,14 +547,19 @@ impl NcApp {
                 self.ai.models_error = None;
                 self.refresh_models();
             }
-            if self.ai.claude_loading.is_none() {
-                self.refresh_claude_models();
-            }
-            if self.ai.openai_loading.is_none() {
-                self.refresh_openai_models();
-            }
-            if self.ai.grok_loading.is_none() {
-                self.refresh_grok_models();
+            // the cloud lists need the keys: ask once per session, not every minute, so that
+            // macOS does not ask for the password again and again
+            if !self.ai.cloud_checked {
+                self.ai.cloud_checked = true;
+                if self.ai.claude_loading.is_none() && keychain::is_available(keychain::Provider::Claude) {
+                    self.refresh_claude_models();
+                }
+                if self.ai.openai_loading.is_none() && keychain::is_available(keychain::Provider::OpenAi) {
+                    self.refresh_openai_models();
+                }
+                if self.ai.grok_loading.is_none() && keychain::is_available(keychain::Provider::Grok) {
+                    self.refresh_grok_models();
+                }
             }
         }
         ui.ctx().request_repaint_after(std::time::Duration::from_secs(5));
@@ -760,8 +769,8 @@ impl NcApp {
             return s;
         }
         let s = if keychain::has_key(provider) {
-            keychain::load_key(provider).map(|k| keychain::masked(&k)).unwrap_or_default()
-        } else if keychain::load_key(provider).is_some() {
+            "stored".to_string()
+        } else if keychain::is_available(provider) {
             "env".to_string()
         } else {
             String::new()
@@ -934,7 +943,7 @@ impl NcApp {
                 } else if status == "env" {
                     tr(lang, env_key).to_string()
                 } else {
-                    format!("{} · {status}", tr(lang, "ai_key_stored"))
+                    tr(lang, "ai_key_stored").to_string()
                 };
                 ui.add_space(4.0);
                 ui.label(RichText::new(line).size(12.0).color(pal.text_faint));

@@ -100,6 +100,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("restore_points", "Backups", "Sauvegardes"),
     ("backup_auto", "Automatic", "Automatique"),
     ("backup_files", "files", "fichiers"),
+    ("backup_file", "file", "fichier"),
     ("backup_confirm", "Confirm restore", "Confirmer la restauration"),
     ("backup_restored", "Restored", "Restauré"),
     ("vault_page_locked", "This page is encrypted", "Cette page est chiffrée"),

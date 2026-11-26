@@ -31,6 +31,8 @@ pub struct BackupUi {
     pub history: Option<HistoryView>,
     /// Snapshot waiting for a second click on "Restore".
     confirm_restore: Option<String>,
+    /// The backup folder was read once since launch (last backup known, old backups thinned).
+    scanned: bool,
 }
 
 /// Minutes between backups offered in the settings (0 = off).
@@ -40,6 +42,16 @@ impl NcApp {
     /// Start a backup on a background thread when it is due (or when `force`).
     pub fn poll_backup(&mut self, ctx: &egui::Context, force: bool) {
         let Some(ws) = &self.ws else { return };
+        if !self.backup.scanned {
+            // the last backup is read from the folder, so it is known after a restart too
+            self.backup.scanned = true;
+            self.backup.last_made =
+                ws.list_snapshots().into_iter().find(|i| i.reason == backup::AUTO_REASON).map(|i| i.time);
+            let base = ws.snapshot_dir();
+            std::thread::spawn(move || {
+                backup::prune_auto(&base);
+            });
+        }
         if let Some(rx) = &self.backup.rx {
             match rx.try_recv() {
                 Ok(result) => {
@@ -66,7 +78,15 @@ impl NcApp {
         }
         let due = force
             || match self.backup.last_run {
-                None => self.backup_started.elapsed() > Duration::from_secs(20),
+                // after a launch: only when the last backup on disk is older than the interval
+                None => {
+                    self.backup_started.elapsed() > Duration::from_secs(20)
+                        && self.backup.last_made.as_deref().is_none_or(|t| {
+                            t.parse::<jiff::Timestamp>().map_or(true, |t| {
+                                jiff::Timestamp::now().as_second() - t.as_second() >= i64::from(minutes) * 60
+                            })
+                        })
+                }
                 Some(t) => t.elapsed() >= Duration::from_secs(u64::from(minutes) * 60),
             };
         if !due {
@@ -114,7 +134,16 @@ impl NcApp {
         }
         ui.add_space(10.0);
         let Some(ws) = &self.ws else { return };
-        let list: Vec<SnapshotInfo> = ws.list_snapshots().into_iter().take(30).collect();
+        // backups and the copies kept before a deletion; single page edits live in the page history
+        let list: Vec<SnapshotInfo> = ws
+            .list_snapshots()
+            .into_iter()
+            .filter(|i| {
+                i.reason == backup::AUTO_REASON
+                    || ["delete forever", "empty trash", "delete property"].contains(&i.reason.as_str())
+            })
+            .take(30)
+            .collect();
         if list.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(10.0);
@@ -128,7 +157,8 @@ impl NcApp {
             } else {
                 info.reason.clone()
             };
-            let sub = format!("{why} · {} {}", info.files.len(), tr(lang, "backup_files"));
+            let unit = tr(lang, if info.files.len() == 1 { "backup_file" } else { "backup_files" });
+            let sub = format!("{why} · {} {unit}", info.files.len());
             let asked = self.backup.confirm_restore.as_deref() == Some(info.id.as_str());
             srow(ui, &pal, &widgets::relative_time(&info.time, lang), &sub, None, |ui| {
                 let label = if asked { tr(lang, "backup_confirm") } else { tr(lang, "restore") };
