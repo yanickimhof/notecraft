@@ -79,6 +79,67 @@ pub enum Action {
     Meeting(crate::meeting::MeetingAction),
     /// Solve the equation in this block, step by step.
     SolveEquation(u64),
+    /// Pick a template page and insert its blocks here.
+    InsertTemplate {
+        index: usize,
+        replace: bool,
+    },
+}
+
+/// Today's date (or date and time) in the format of a `date_*` slash key, in the language of the app.
+pub fn date_text(key: &str, fr: bool) -> String {
+    const MONTHS_FR: [&str; 12] = [
+        "janvier",
+        "février",
+        "mars",
+        "avril",
+        "mai",
+        "juin",
+        "juillet",
+        "août",
+        "septembre",
+        "octobre",
+        "novembre",
+        "décembre",
+    ];
+    const MONTHS_EN: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    const DAYS_FR: [&str; 7] = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+    const DAYS_EN: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    let now = jiff::Zoned::now();
+    let (y, m, d) = (now.year(), now.month(), now.day());
+    let mi = (m.clamp(1, 12) - 1) as usize;
+    let wi = now.weekday().to_monday_zero_offset() as usize % 7;
+    match key {
+        "date_iso" => format!("{y}-{m:02}-{d:02}"),
+        "date_long" if fr => format!("{d} {} {y}", MONTHS_FR[mi]),
+        "date_long" => format!("{} {d}, {y}", MONTHS_EN[mi]),
+        "date_full" if fr => format!("{} {d} {} {y}", DAYS_FR[wi], MONTHS_FR[mi]),
+        "date_full" => format!("{}, {} {d}, {y}", DAYS_EN[wi], MONTHS_EN[mi]),
+        "date_time" => format!("{d:02}.{m:02}.{y} {:02}:{:02}", now.hour(), now.minute()),
+        _ => format!("{d:02}.{m:02}.{y}"),
+    }
+}
+
+/// The second line of a slash menu entry: a date shows today's date in its format.
+pub fn slash_desc(lang: Lang, key: &str) -> String {
+    if key.starts_with("date_") {
+        date_text(key, lang == Lang::Fr)
+    } else {
+        tr(lang, &format!("desc_{key}")).to_string()
+    }
 }
 
 #[derive(Default)]
@@ -142,6 +203,8 @@ fn normalize_url(s: &str) -> String {
 }
 
 pub struct EditorState {
+    /// The `date_*` slash key last used, for Cmd+Shift+D.
+    pub date_key: &'static str,
     histories: HashMap<String, History<Vec<Block>>>,
     pub focus: Option<(u64, Caret)>,
     pub slash: Option<Slash>,
@@ -203,6 +266,7 @@ impl Default for EditorState {
     fn default() -> Self {
         let (title_tx, title_rx) = std::sync::mpsc::channel();
         EditorState {
+            date_key: "date_short",
             title_tx,
             title_rx,
             bookmark_input: HashMap::new(),
@@ -275,6 +339,16 @@ pub const SLASH_ITEMS: &[SlashItem] = &[
     SlashItem { key: "callout", glyph: "💡", aliases: &["callout", "note", "tip", "encadre"] },
     SlashItem { key: "code", glyph: "</>", aliases: &["code", "snippet", "```"] },
     SlashItem { key: "link", glyph: "↗", aliases: &["link", "mention", "lien", "[["] },
+    SlashItem { key: "date_short", glyph: "📅", aliases: &["date", "today", "aujourd'hui", "jour"] },
+    SlashItem { key: "date_iso", glyph: "📅", aliases: &["date", "today", "iso", "aujourd'hui"] },
+    SlashItem { key: "date_long", glyph: "📅", aliases: &["date", "today", "long", "aujourd'hui"] },
+    SlashItem { key: "date_full", glyph: "📅", aliases: &["date", "today", "weekday", "jour", "aujourd'hui"] },
+    SlashItem { key: "date_time", glyph: "🕒", aliases: &["date", "time", "now", "heure", "maintenant"] },
+    SlashItem {
+        key: "template",
+        glyph: "📋",
+        aliases: &["template", "modele", "modèle", "minutes", "compte rendu", "meeting minutes", "cr"],
+    },
     SlashItem { key: "image", glyph: "🖼", aliases: &["image", "picture", "photo", "img"] },
     SlashItem { key: "file", glyph: "📎", aliases: &["file", "attachment", "pdf", "fichier"] },
     SlashItem {
@@ -340,7 +414,8 @@ pub fn filter_items(query: &str, mode: &SlashMode) -> Vec<&'static SlashItem> {
         })
         .filter_map(|(i, it)| {
             if query.is_empty() {
-                return Some((0, i, it));
+                // the other date formats show up once "date" is typed
+                return (!matches!(it.key, "date_iso" | "date_long" | "date_full" | "date_time")).then_some((0, i, it));
             }
             let (en, fr) = both(&format!("blk_{}", it.key));
             let best =
@@ -1649,29 +1724,48 @@ impl EditorState {
                     self.focus = None;
                     self.table_focus = Some((bid, 0, 0));
                 }
-                // Tab and Shift+Tab move between cells; Tab in the last cell adds a row
+                // Keys inside the grid: Tab and Shift+Tab, Enter (cell below), the arrows at the edges of a cell
+                // text. Tab or Enter in the last row adds a row.
                 let tctx = ui.ctx().clone();
                 let focused_cell = (0..rows)
                     .flat_map(|r| (0..cols).map(move |c| (r, c)))
                     .find(|&(r, c)| tctx.memory(|m| m.has_focus(Id::unique(("table-cell", bid, r, c)))));
                 if let Some((r, c)) = focused_cell {
-                    let back = tctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::Tab));
-                    let fwd = !back && tctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
-                    if fwd {
-                        if c + 1 < cols {
-                            self.table_focus = Some((bid, r, c + 1));
-                        } else {
-                            if r + 1 >= rows {
-                                add_row = true;
-                            }
-                            self.table_focus = Some((bid, r + 1, 0));
+                    let cid = Id::unique(("table-cell", bid, r, c));
+                    let edge: Option<(Id, bool, bool, bool, bool)> =
+                        tctx.data(|d| d.get_temp(Id::unique(("table-edge", bid))));
+                    let (first, last, start, end) =
+                        edge.filter(|e| e.0 == cid).map(|e| (e.1, e.2, e.3, e.4)).unwrap_or((true, true, false, false));
+                    let none = Modifiers::NONE;
+                    let mut target: Option<(usize, usize)> = None;
+                    tctx.input_mut(|i| {
+                        if i.consume_key(Modifiers::SHIFT, Key::Tab) {
+                            target = if c > 0 {
+                                Some((r, c - 1))
+                            } else if r > 0 {
+                                Some((r - 1, cols - 1))
+                            } else {
+                                None
+                            };
+                        } else if i.consume_key(none, Key::Tab) {
+                            target = Some(if c + 1 < cols { (r, c + 1) } else { (r + 1, 0) });
+                        } else if i.consume_key(none, Key::Enter) {
+                            target = Some((r + 1, c));
+                        } else if first && r > 0 && i.consume_key(none, Key::ArrowUp) {
+                            target = Some((r - 1, c));
+                        } else if last && r + 1 < rows && i.consume_key(none, Key::ArrowDown) {
+                            target = Some((r + 1, c));
+                        } else if start && (c > 0 || r > 0) && i.consume_key(none, Key::ArrowLeft) {
+                            target = Some(if c > 0 { (r, c - 1) } else { (r - 1, cols - 1) });
+                        } else if end && (c + 1 < cols || r + 1 < rows) && i.consume_key(none, Key::ArrowRight) {
+                            target = Some(if c + 1 < cols { (r, c + 1) } else { (r + 1, 0) });
                         }
-                    } else if back {
-                        if c > 0 {
-                            self.table_focus = Some((bid, r, c - 1));
-                        } else if r > 0 {
-                            self.table_focus = Some((bid, r - 1, cols - 1));
+                    });
+                    if let Some((tr, tc)) = target {
+                        if tr >= rows {
+                            add_row = true;
                         }
+                        self.table_focus = Some((bid, tr, tc));
                     }
                 }
                 ui.vertical(|ui| {
@@ -1735,16 +1829,41 @@ impl EditorState {
                                                     let job = inline_job(buf.as_str(), &cell_base, pal, wrap);
                                                     ui.fonts_mut(|f| f.layout_job(job))
                                                 };
-                                                let te = egui::TextEdit::multiline(cell)
+                                                // the text being typed keeps its spaces; the stored cell is trimmed
+                                                let cid = Id::unique(("table-cell", bid, ri, ci));
+                                                let raw_id = Id::unique(("table-raw", bid, ri, ci));
+                                                let mut buf: String = ui
+                                                    .data(|d| d.get_temp::<String>(raw_id))
+                                                    .filter(|r| r.trim() == cell.as_str())
+                                                    .unwrap_or_else(|| cell.clone());
+                                                let o = egui::TextEdit::multiline(&mut buf)
                                                     .desired_rows(1)
-                                                    .id(Id::unique(("table-cell", bid, ri, ci)))
+                                                    .id(cid)
                                                     .frame(egui::Frame::NONE)
                                                     .desired_width(col_ws[ci] - 18.0)
-                                                    .layouter(&mut cell_layouter);
-                                                let resp = ui.add(te);
-                                                if cell.contains('\n') {
-                                                    *cell = cell.replace(['\n', '\r'], " ");
+                                                    .layouter(&mut cell_layouter)
+                                                    .show(ui);
+                                                let resp = o.response.clone();
+                                                if resp.has_focus() {
+                                                    if let Some(r) = o.cursor_range {
+                                                        let here = o.galley.pos_from_cursor(r.primary);
+                                                        let first = here.min.y <= 1.0;
+                                                        let last = here.max.y >= o.galley.rect.max.y - 1.0;
+                                                        let collapsed = r.primary.index.0 == r.secondary.index.0;
+                                                        let start = collapsed && r.primary.index.0 == 0;
+                                                        let end = collapsed
+                                                            && r.primary.index.0 >= o.galley.text().chars().count();
+                                                        ui.data_mut(|d| {
+                                                            d.insert_temp(
+                                                                Id::unique(("table-edge", bid)),
+                                                                (cid, first, last, start, end),
+                                                            )
+                                                        });
+                                                    }
                                                 }
+                                                let buf = buf.replace(['\n', '\r'], " ");
+                                                ui.data_mut(|d| d.insert_temp(raw_id, buf.clone()));
+                                                *cell = buf.trim().to_string();
                                                 if self.table_focus == Some((bid, ri, ci)) {
                                                     resp.request_focus();
                                                     self.table_focus = None;

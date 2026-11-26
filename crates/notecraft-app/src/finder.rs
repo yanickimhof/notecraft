@@ -17,6 +17,11 @@ pub enum FinderMode {
         block: u64,
         at: usize,
     },
+    /// Insert the blocks of a template page at `index` of the current page.
+    Template {
+        index: usize,
+        replace: bool,
+    },
 }
 
 pub struct Finder {
@@ -75,7 +80,10 @@ impl NcApp {
         let Some(ws) = &self.ws else { return };
         let pal = self.pal;
         let lang = self.prefs.lang;
-        let results = ws.search(&finder.query, 24);
+        let results = match finder.mode {
+            FinderMode::Template { .. } => crate::app::template_results(ws, &finder.query),
+            _ => ws.search(&finder.query, 24),
+        };
         let n = results.len();
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::ArrowDown)) && n > 0 {
             finder.selected = (finder.selected + 1) % n;
@@ -110,6 +118,7 @@ impl NcApp {
                                 let hint = match finder.mode {
                                     FinderMode::Jump => tr(lang, "find_hint"),
                                     FinderMode::Link { .. } => tr(lang, "search_pages"),
+                                    FinderMode::Template { .. } => tr(lang, "search_templates"),
                                 };
                                 let r = ui.add(
                                     egui::TextEdit::singleline(&mut finder.query)
@@ -210,6 +219,7 @@ impl NcApp {
         if let Some((doc, title)) = chosen {
             match finder.mode.clone() {
                 FinderMode::Jump => self.navigate(Target::Doc(doc)),
+                FinderMode::Template { index, replace } => self.insert_template(doc, index, replace),
                 FinderMode::Link { target, block, at } => {
                     if let Some(ws) = self.ws.as_mut() {
                         let key = target.key();

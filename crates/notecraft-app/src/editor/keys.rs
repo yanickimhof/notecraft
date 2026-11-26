@@ -135,6 +135,18 @@ impl EditorState {
                 return;
             }
         }
+        // Cmd+Shift+D writes today's date at the caret, in the format last chosen in the slash menu
+        if rich && consume(cmd_shift, Key::D) {
+            let text = date_text(self.date_key, env.lang == Lang::Fr);
+            let before = blocks.clone();
+            let (a, b) = (caret.0.min(caret.1), caret.0.max(caret.1));
+            let kept = remove_chars(&blocks[i].text, a, b);
+            blocks[i].text = insert_at_char(&kept, a, &text);
+            self.focus = Some((bid, Caret::At(a + char_len(&text))));
+            self.record(env.key, &before, None);
+            out.changed = true;
+            return;
+        }
         if consume(cmd, Key::D) {
             self.duplicate(blocks, i, env, out);
             return;
@@ -866,6 +878,15 @@ impl EditorState {
                     blocks.insert(at + k, b);
                 }
             }
+            k if k.starts_with("date_") => {
+                // the date goes in the text, at the place of the "/query"
+                let text = date_text(k, env.lang == Lang::Fr);
+                self.date_key = SLASH_ITEMS.iter().find(|it| it.key == k).map_or("date_short", |it| it.key);
+                let at = slash.start.min(char_len(&blocks[i].text));
+                blocks[i].text = insert_at_char(&blocks[i].text, at, &text);
+                self.focus = Some((bid, Caret::At(at + char_len(&text))));
+            }
+            "template" => out.actions.push(Action::InsertTemplate { index: target, replace: empty }),
             "page" => out.actions.push(Action::CreateSubpage { index: target, replace: empty }),
             "link" => {
                 out.actions.push(Action::LinkToPage { block: bid, at: slash.start });
@@ -1004,11 +1025,7 @@ impl EditorState {
                             ui.label(
                                 RichText::new(tr(env.lang, &format!("blk_{}", it.key))).size(14.0).color(pal.text),
                             );
-                            ui.label(
-                                RichText::new(tr(env.lang, &format!("desc_{}", it.key)))
-                                    .size(11.5)
-                                    .color(pal.text_secondary),
-                            );
+                            ui.label(RichText::new(slash_desc(env.lang, it.key)).size(11.5).color(pal.text_secondary));
                         });
                         if resp.hovered() && ui.input(|i| i.pointer.delta() != Vec2::ZERO) {
                             if let Some(s) = &mut self.slash {

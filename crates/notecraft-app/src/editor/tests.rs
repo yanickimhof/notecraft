@@ -143,6 +143,8 @@ fn slash_items_in_requested_order() {
             "callout",
             "code",
             "link",
+            "date_short",
+            "template",
             "image",
             "file",
             "mermaid",
@@ -164,6 +166,10 @@ fn slash_filtering_in_both_languages() {
     assert_eq!(filter_items("titre 2", &SlashMode::Insert)[0].key, "h2");
     assert_eq!(filter_items("kanban", &SlashMode::Insert)[0].key, "board");
     assert!(filter_items("zzzz", &SlashMode::Insert).is_empty());
+    let dates: Vec<_> = filter_items("date", &SlashMode::Insert).iter().map(|i| i.key).collect();
+    for k in ["date_short", "date_iso", "date_long", "date_full", "date_time"] {
+        assert!(dates.contains(&k), "{k} in {dates:?}");
+    }
     assert!(filter_items("", &SlashMode::TurnInto).iter().all(|i| i.key != "image"));
 }
 
@@ -281,4 +287,69 @@ fn a_speaker_is_renamed_with_one_click_and_enter() {
         matches!(acts.as_slice(), [crate::meeting::MeetingAction::RenameSpeaker(_, old, new)] if old == "Speaker 1" && new == "Anna"),
         "{acts:?}"
     );
+}
+
+#[test]
+fn simple_table_keeps_typed_spaces_and_arrows_move_between_cells() {
+    let tbl = Block::new(BlockKind::Table, "| a | b |\n| --- | --- |\n| c | d |");
+    let bid = tbl.id;
+    let mut h = egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
+        |ui, (state, blocks): &mut (EditorState, Vec<Block>)| {
+            let pal = Palette::light();
+            let titles = HashMap::new();
+            let meeting = crate::meeting::View::default();
+            let embed = |_: &mut Ui, _: u64, _: &str| {};
+            let env = Env {
+                pal: &pal,
+                lang: Lang::En,
+                root: Path::new("."),
+                titles: &titles,
+                key: "tbl",
+                meeting: &meeting,
+                db_titles: &[],
+                embed: &embed,
+            };
+            state.show(ui, blocks, &env);
+        },
+        (EditorState::default(), vec![tbl]),
+    );
+    theme::install_fonts(&h.ctx);
+    h.state_mut().0.table_focus = Some((bid, 0, 0));
+    for _ in 0..3 {
+        h.run();
+    }
+    let key = |k: Key| egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    };
+    // a space typed after a word stays, so a cell can hold several words
+    h.event(egui::Event::Text(" x".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    assert!(h.state().1[0].text.starts_with("| a x |"), "{}", h.state().1[0].text);
+    // the right arrow at the end of the text goes to the next cell
+    h.event(key(Key::ArrowRight));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text("!".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    assert!(h.state().1[0].text.starts_with("| a x | b! |"), "{}", h.state().1[0].text);
+    // Enter goes to the cell below
+    h.event(key(Key::Enter));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text("?".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    let md = h.state().1[0].text.clone();
+    assert!(md.contains("| c | d? |"), "{md}");
 }

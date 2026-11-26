@@ -22,8 +22,10 @@ mod chrome;
 mod onboarding;
 mod system;
 mod tabs;
+mod templates;
 mod webpub;
 pub use system::*;
+pub use templates::template_results;
 pub use webpub::{GuardAction, PubAct, PubGuard, SubdomainDlg};
 /// A page, database or template that exists and is not in the trash, nor under something that is.
 /// It is the only kind a tab or the open page may show: a trashed page must close, not stay on screen.
@@ -735,6 +737,10 @@ impl NcApp {
                         }
                         Err(e) => self.notify(e.to_string()),
                     }
+                }
+                Action::InsertTemplate { index, replace } => {
+                    self.ensure_templates();
+                    self.finder = Some(Finder::new(FinderMode::Template { index, replace }));
                 }
                 Action::LinkToPage { block, at } => {
                     if let Some(t) = self.current.clone() {

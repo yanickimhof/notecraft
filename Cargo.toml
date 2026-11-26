@@ -4,7 +4,7 @@ members = ["crates/notecraft-core", "crates/notecraft-cli", "crates/notecraft-ap
 default-members = ["crates/notecraft-core", "crates/notecraft-cli", "crates/notecraft-app", "crates/notecraft-mcp", "crates/notecraft-ai", "crates/notecraft-meeting"]
 
 [workspace.package]
-version = "0.5.2"
+version = "0.5.3"
 edition = "2021"
 license-file = "LICENSE"
 publish = false

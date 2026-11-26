@@ -2,6 +2,16 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.5.3 (2026-11-26)
+
+### Added
+- Today's date: type / then date to pick a format (numeric, ISO, long, with the weekday, with the time), or press Command Shift D for the format used last.
+- Templates: / then Template inserts the blocks of a template page. The Templates page holds your own templates (each sub-page is one) and a standard Meeting minutes; {{date}} becomes today's date.
+
+### Fixed
+- Simple tables: spaces can be typed, and the arrows, Enter, Tab and Shift Tab move between cells.
+- Various bug fixes.
+
 ## 0.5.2 (2026-11-26)
 
 ### Added
