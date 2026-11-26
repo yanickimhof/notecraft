@@ -70,8 +70,34 @@ fn agent() -> ureq::Agent {
         .timeout_connect(Some(std::time::Duration::from_secs(15)))
         // This limit covers the whole body, not each read: it must outlast the largest model on a slow line.
         .timeout_recv_body(Some(std::time::Duration::from_secs(45 * 60)))
+        // The macOS certificate store, so a company proxy or antivirus that re-signs HTTPS is trusted.
+        .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
         .build()
         .into()
+}
+
+/// A network error in words a person can act on, with the technical detail kept at the end.
+fn explain(url: &str, err: &str) -> String {
+    let host = url.split('/').nth(2).unwrap_or(url);
+    let low = err.to_lowercase();
+    let why = if low.contains("status code 401") || low.contains("status code 403") {
+        format!("{host} refused the request (access denied: a proxy or a filter may be blocking it)")
+    } else if low.contains("status code 404") {
+        format!("the file was not found on {host}")
+    } else if low.contains("status code 429") || low.contains("status code 5") {
+        format!("{host} is busy, try again in a few minutes")
+    } else if low.contains("certificate") || low.contains("tls") || low.contains("handshake") {
+        "the secure connection was refused: a company proxy or an antivirus may be inspecting HTTPS".to_string()
+    } else if low.contains("dns") || low.contains("host") || low.contains("resolve") || low.contains("lookup") {
+        format!("{host} cannot be reached: check the internet connection, VPN and DNS")
+    } else if low.contains("timeout") || low.contains("timed out") {
+        format!("{host} does not answer: check the internet connection, VPN or firewall")
+    } else if low.contains("connection") {
+        format!("the connection to {host} failed: check the internet connection, VPN or firewall")
+    } else {
+        format!("download from {host} failed")
+    };
+    format!("{why} ({err})")
 }
 
 /// Downloads `url` into `dest`, through a `.part` file: `dest` exists only when the file is complete.
@@ -82,7 +108,7 @@ fn fetch(
     fallback_total: u64,
     progress: &mut dyn FnMut(u64, u64) -> bool,
 ) -> Result<(), String> {
-    let resp = agent().get(url).call().map_err(|e| e.to_string())?;
+    let resp = agent().get(url).call().map_err(|e| explain(url, &e.to_string()))?;
     let total = resp
         .headers()
         .get("content-length")

@@ -398,6 +398,23 @@ pub fn cell_editor(
                                         ui.close();
                                     }
                                 }
+                                // a small button next to the tag opens its colours
+                                ui.menu_button("...", |ui| {
+                                    for c in COLORS {
+                                        if ui.selectable_label(o.color == c, c).clicked() {
+                                            if let Some(op) = ws
+                                                .dbs
+                                                .get_mut(db)
+                                                .and_then(|d| d.schema.properties.iter_mut().find(|x| x.id == p.id))
+                                                .and_then(|pp| pp.options.iter_mut().find(|x| x.name == o.name))
+                                            {
+                                                op.color = c.to_string();
+                                            }
+                                            save_schema(ws, db, actions);
+                                            ui.close();
+                                        }
+                                    }
+                                });
                             });
                         }
                     }
