@@ -2,6 +2,15 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.5.1 (2026-11-26)
+
+### Added
+- A database created by Claude (MCP) inside a page now shows in that page, not only as a sub-page.
+
+### Fixed
+- Model downloads trust the macOS certificate store (company proxies) and explain network errors.
+- Various bug fixes.
+
 ## 0.5.0 (2026-11-24)
 
 ### Added

@@ -1213,6 +1213,15 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
                     add_options(ws, &id, &pid, p.get("options"))?;
                 }
             }
+            // Shown in the page it belongs to, not only as a sub-page.
+            if let Some(pid) = &parent {
+                let doc = DocId::Page(pid.clone());
+                if ws.blocks(&doc).is_some() {
+                    let t = ws.dbs[&id].schema.title.clone();
+                    body_mut(ws, &doc)?.push(Block::new(BlockKind::Database, t));
+                    save_body(ws, &doc)?;
+                }
+            }
             Ok(format!("Created database \"{title}\" (id {id})."))
         }
         "add_property" => {
