@@ -847,7 +847,8 @@ impl NcApp {
 
         let ready = provider.is_some() || matches!(ostate, OllamaState::Ready | OllamaState::Checking);
         let mut model: Option<String> = None;
-        let (mut launch, mut download, mut copy) = (false, false, false);
+        let (mut launch, mut download) = (false, false);
+        let mut pull: Option<&str> = None;
         srow(ui, &pal, tr(lang, "ai_model"), "", None, |ui| {
             if ready {
                 if !models.is_empty() {
@@ -857,7 +858,23 @@ impl NcApp {
                 match ostate {
                     OllamaState::Missing => download = text_link(ui, &pal, tr(lang, "ollama_download")).clicked(),
                     OllamaState::Stopped => launch = text_link(ui, &pal, tr(lang, "ollama_launch")).clicked(),
-                    _ => copy = text_link(ui, &pal, tr(lang, "ollama_copy_pull")).clicked(),
+                    _ => {
+                        if let Some(job) = &self.ai.pull {
+                            use std::sync::atomic::Ordering;
+                            let (d, t) = (job.done.load(Ordering::Relaxed), job.total.load(Ordering::Relaxed));
+                            let pct = (d * 100).checked_div(t).map_or("…".to_string(), |v| format!(" {v}%"));
+                            ui.label(format!("{} {}{}", tr(lang, "ollama_pulling"), job.model, pct));
+                            if text_link(ui, &pal, tr(lang, "cancel")).clicked() {
+                                job.cancel.store(true, Ordering::Relaxed);
+                            }
+                        } else {
+                            for (m, size) in [("qwen2.5:7b", "4.7 GB"), ("llama3.2", "2 GB")] {
+                                if text_link(ui, &pal, &format!("{} {m} ({size})", tr(lang, "ollama_get"))).clicked() {
+                                    pull = Some(m);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -886,13 +903,12 @@ impl NcApp {
         if download {
             ui.ctx().open_url(egui::OpenUrl::new_tab("https://ollama.com/download"));
         }
+        if let Some(m) = pull {
+            self.start_pull(m);
+        }
         if launch {
             let _ = std::process::Command::new("open").args(["-a", "Ollama"]).spawn();
             self.ai.models_error = None;
-        }
-        if copy {
-            ui.ctx().copy_text("ollama pull llama3.2".into());
-            self.toast = Some((tr(lang, "copied").into(), Instant::now()));
         }
 
         // the key, in a small box under its icon

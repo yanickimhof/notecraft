@@ -362,11 +362,8 @@ pub fn cell_editor(
                         new_option.clear();
                     }
                     ui.separator();
-                    let groups: Vec<Option<StatusGroup>> = if p.kind == PropKind::Status {
-                        vec![Some(StatusGroup::ToDo), Some(StatusGroup::InProgress), Some(StatusGroup::Complete)]
-                    } else {
-                        vec![None]
-                    };
+                    // one list in the order the options were made: a new one comes last
+                    let groups: Vec<Option<StatusGroup>> = vec![None];
                     for g in groups {
                         if let Some(g) = g {
                             let key = match g {
@@ -398,23 +395,8 @@ pub fn cell_editor(
                                         ui.close();
                                     }
                                 }
-                                // a small button next to the tag opens its colours
-                                ui.menu_button("...", |ui| {
-                                    for c in COLORS {
-                                        if ui.selectable_label(o.color == c, c).clicked() {
-                                            if let Some(op) = ws
-                                                .dbs
-                                                .get_mut(db)
-                                                .and_then(|d| d.schema.properties.iter_mut().find(|x| x.id == p.id))
-                                                .and_then(|pp| pp.options.iter_mut().find(|x| x.name == o.name))
-                                            {
-                                                op.color = c.to_string();
-                                            }
-                                            save_schema(ws, db, actions);
-                                            ui.close();
-                                        }
-                                    }
-                                });
+                                // a small button next to the tag: rename, colour, group, delete
+                                ui.menu_button("...", |ui| option_menu(ui, ws, db, p, &o.name, pal, lang, actions));
                             });
                         }
                     }
@@ -719,4 +701,114 @@ pub(super) fn rollup_menus(
             }
         }
     });
+}
+
+/// The small menu of one option: rename, colour, group (status) and delete. A rename or a delete is carried
+/// to every row that holds the option.
+#[allow(clippy::too_many_arguments)]
+fn option_menu(
+    ui: &mut Ui,
+    ws: &mut Workspace,
+    db: &str,
+    p: &Property,
+    name: &str,
+    pal: &Palette,
+    lang: Lang,
+    actions: &mut Vec<DbAction>,
+) {
+    let Some(o) = p.option(name).cloned() else { return };
+    ui.set_min_width(170.0);
+    let buf_id = Id::unique(("opt-rename", &p.id, name));
+    let mut text: String = ui.data_mut(|d| d.get_temp(buf_id)).unwrap_or_else(|| name.to_string());
+    let r = ui.add(egui::TextEdit::singleline(&mut text).desired_width(150.0));
+    ui.data_mut(|d| d.insert_temp(buf_id, text.clone()));
+    let new = text.trim().to_string();
+    let renamed = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !new.is_empty() && new != name;
+    if renamed && p.option(&new).is_none() {
+        {
+            if let Some(op) = ws
+                .dbs
+                .get_mut(db)
+                .and_then(|d| d.schema.properties.iter_mut().find(|x| x.id == p.id))
+                .and_then(|pp| pp.options.iter_mut().find(|x| x.name == name))
+            {
+                op.name = new.clone();
+            }
+            save_schema(ws, db, actions);
+            carry_option(ws, db, p, name, Some(&new), actions);
+            ui.data_mut(|d| d.remove_temp::<String>(buf_id));
+            ui.close();
+            return;
+        }
+    }
+    ui.separator();
+    ui.label(small(tr(lang, "combo_color"), pal));
+    for c in COLORS {
+        if ui.selectable_label(o.color == c, c).clicked() {
+            if let Some(op) = ws
+                .dbs
+                .get_mut(db)
+                .and_then(|d| d.schema.properties.iter_mut().find(|x| x.id == p.id))
+                .and_then(|pp| pp.options.iter_mut().find(|x| x.name == name))
+            {
+                op.color = c.to_string();
+            }
+            save_schema(ws, db, actions);
+            ui.close();
+        }
+    }
+    if p.kind == PropKind::Status {
+        ui.separator();
+        ui.label(small(tr(lang, "combo_status_group"), pal));
+        let cur = o.group.unwrap_or(StatusGroup::ToDo);
+        for (g, key) in [
+            (StatusGroup::ToDo, "group_to_do"),
+            (StatusGroup::InProgress, "group_in_progress"),
+            (StatusGroup::Complete, "group_complete"),
+        ] {
+            if ui.selectable_label(cur == g, tr(lang, key)).clicked() {
+                if let Some(op) = ws
+                    .dbs
+                    .get_mut(db)
+                    .and_then(|d| d.schema.properties.iter_mut().find(|x| x.id == p.id))
+                    .and_then(|pp| pp.options.iter_mut().find(|x| x.name == name))
+                {
+                    op.group = Some(g);
+                }
+                save_schema(ws, db, actions);
+                ui.close();
+            }
+        }
+    }
+    ui.separator();
+    if ui.button(tr(lang, "remove")).clicked() {
+        if let Some(pp) = ws.dbs.get_mut(db).and_then(|d| d.schema.properties.iter_mut().find(|x| x.id == p.id)) {
+            pp.options.retain(|x| x.name != name);
+        }
+        save_schema(ws, db, actions);
+        carry_option(ws, db, p, name, None, actions);
+        ui.close();
+    }
+}
+
+/// Rows holding the option `old` now hold `new`, or lose it when `new` is None.
+fn carry_option(ws: &mut Workspace, db: &str, p: &Property, old: &str, new: Option<&str>, actions: &mut Vec<DbAction>) {
+    let ids: Vec<String> = ws.dbs.get(db).map(|d| d.rows.keys().cloned().collect()).unwrap_or_default();
+    for rid in ids {
+        let v = ws.dbs[db].rows[&rid].value(p);
+        let nv = match v {
+            PropValue::Select(s) if s == old => {
+                Some(new.map_or(PropValue::Empty, |n| PropValue::Select(n.to_string())))
+            }
+            PropValue::Multi(m) if m.iter().any(|x| x == old) => {
+                let list: Vec<String> =
+                    m.iter().filter_map(|x| if x == old { new.map(str::to_string) } else { Some(x.clone()) }).collect();
+                Some(if list.is_empty() { PropValue::Empty } else { PropValue::Multi(list) })
+            }
+            _ => None,
+        };
+        if let Some(nv) = nv {
+            set_row_value(ws, db, &rid, p, nv, actions);
+        }
+    }
 }

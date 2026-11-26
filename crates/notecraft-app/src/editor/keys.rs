@@ -168,6 +168,18 @@ impl EditorState {
             });
             return;
         }
+        // Cmd+A: first the text of the block (native), then, when it is all selected already, every block
+        if ctx.input(|inp| inp.modifiers.command && !inp.modifiers.shift && inp.key_pressed(Key::A)) {
+            let len = char_len(&blocks[i].text);
+            let all_text = len == 0 || cursor_range(ctx, id).is_some_and(|(a, b)| a == 0 && b >= len);
+            if all_text && consume(cmd, Key::A) {
+                self.select_all_blocks(blocks);
+                self.slash = None;
+                ctx.memory_mut(|m| m.surrender_focus(id));
+                self.focused_block = None;
+                return;
+            }
+        }
         if consume(Modifiers::NONE, Key::Escape) {
             self.sel_anchor = None;
             self.selected = Some(bid);
@@ -354,6 +366,14 @@ impl EditorState {
         Some((lo, blocks::subtree_end(blocks, hi)))
     }
 
+    /// Selects every block of the page (the title is not part of it).
+    pub(super) fn select_all_blocks(&mut self, blocks: &[Block]) {
+        if let (Some(first), Some(last)) = (blocks.first(), blocks.last()) {
+            self.selected = Some(last.id);
+            self.sel_anchor = Some(first.id);
+        }
+    }
+
     /// The blocks of a multi-block selection when `i` is one of them.
     pub(super) fn multi_range(&self, blocks: &[Block], i: usize) -> Option<(usize, usize)> {
         self.sel_anchor?;
@@ -446,7 +466,11 @@ impl EditorState {
             (copy, cut, paste)
         });
         if copy || cut {
-            ctx.copy_text(blocks::to_markdown(&blocks[range_start..range_end]));
+            super::richpaste::copy_blocks(ctx, &blocks[range_start..range_end]);
+        }
+        if consume(cmd, Key::A) {
+            self.select_all_blocks(blocks);
+            return;
         }
         if let Some(text) = paste {
             let text = super::richpaste::clipboard_markdown().unwrap_or(text);
@@ -1079,12 +1103,12 @@ impl EditorState {
                             }
                             "copy" => {
                                 let (a, b) = self.multi_range(blocks, i).unwrap_or((i, end));
-                                ctx.copy_text(blocks::to_markdown(&blocks[a..b]));
+                                super::richpaste::copy_blocks(ctx, &blocks[a..b]);
                                 acted = true;
                             }
                             "cut" => {
                                 let (a, b) = self.multi_range(blocks, i).unwrap_or((i, end));
-                                ctx.copy_text(blocks::to_markdown(&blocks[a..b]));
+                                super::richpaste::copy_blocks(ctx, &blocks[a..b]);
                                 deferred.push(Deferred::Delete(i));
                                 acted = true;
                             }

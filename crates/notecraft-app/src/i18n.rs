@@ -727,6 +727,8 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("ollama_launch", "Open Ollama", "Ouvrir Ollama"),
     ("ollama_no_model", "No model", "Aucun modèle"),
     ("ollama_refresh", "Refresh", "Actualiser"),
+    ("ollama_get", "Download", "Télécharger"),
+    ("ollama_pulling", "Downloading", "Téléchargement de"),
     ("ollama_copy_pull", "Copy the command", "Copier la commande"),
     ("mcp_who", "What can the assistant do?", "Que peut faire l'assistant ?"),
     ("mcp_level_ro_desc", "Read pages and search. Nothing is changed.", "Lire les pages et chercher. Rien n'est modifié."),

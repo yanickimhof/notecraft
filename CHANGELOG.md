@@ -2,6 +2,17 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.5.2 (2026-11-26)
+
+### Added
+- Command A selects the text of a line, then every block of the page; copying gives rich text for a mail or Word, and Markdown for a text editor.
+- Status and tag options: a new one is added at the end, and each can be renamed, recoloured, regrouped or deleted from its cell menu.
+- Local AI: when Ollama has no model, NøteCraft offers to download one and shows the progress.
+
+### Fixed
+- Speech model loading falls back to the processor, and a damaged model file is detected.
+- Various bug fixes.
+
 ## 0.5.1 (2026-11-26)
 
 ### Added

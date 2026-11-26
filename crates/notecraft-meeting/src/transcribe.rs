@@ -226,6 +226,23 @@ pub fn is_looping(text: &str) -> bool {
     tri.values().any(|&c| c >= 4)
 }
 
+/// Why a whisper.cpp model file cannot be right: too small or without the GGML signature.
+fn damaged_model(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let len = std::fs::metadata(path).ok()?.len();
+    let mut head = [0u8; 4];
+    let _ = std::fs::File::open(path).ok()?.read_exact(&mut head);
+    // "ggml", "ggjt" and "ggla" appear in the file as little endian numbers: lmgg, tjgg, algg.
+    let known = [b"lmgg", b"tjgg", b"algg", b"GGUF"].contains(&&head);
+    if len < 20_000_000 {
+        Some(format!("only {} MB", len / 1_000_000))
+    } else if !known {
+        Some("not a model file".to_string())
+    } else {
+        None
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn worker(model: &Path, language: &str, vocabulary: &str, engine: &str, rx: &Receiver<Job>, etx: &Sender<Event>) {
     use parakeet_rs::Transcriber as _;
@@ -236,9 +253,26 @@ fn worker(model: &Path, language: &str, vocabulary: &str, engine: &str, rx: &Rec
         let _ = etx.send(Event::Failed(m));
     };
     let Some(path) = model.to_str() else { return fail("bad model path".into()) };
+    // A damaged file is removed so the app offers to download it again.
+    if let Some(problem) = damaged_model(model) {
+        let _ = std::fs::remove_file(model);
+        return fail(format!("the speech model file is damaged ({problem}): it was removed, download it again"));
+    }
+    // First on the GPU (Metal); if that fails on this Mac, again on the processor.
     let ctx = match WhisperContext::new_with_params(path, WhisperContextParameters::default()) {
         Ok(c) => c,
-        Err(e) => return fail(format!("could not load the speech model: {e}")),
+        Err(gpu_err) => {
+            let mut cpu = WhisperContextParameters::default();
+            cpu.use_gpu(false);
+            match WhisperContext::new_with_params(path, cpu) {
+                Ok(c) => c,
+                Err(e) => {
+                    return fail(format!(
+                        "could not load the speech model ({gpu_err}; processor: {e}). Delete the model in Settings and download it again, or choose a smaller one"
+                    ))
+                }
+            }
+        }
     };
     let mut state = match ctx.create_state() {
         Ok(s) => s,

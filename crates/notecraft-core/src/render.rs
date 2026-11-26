@@ -292,8 +292,8 @@ pub fn base64(data: &[u8]) -> String {
     o
 }
 
-/// A standalone HTML page (images are embedded).
-pub fn to_html(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>) -> String {
+/// The blocks as HTML elements, without the page around them (for the clipboard and emails).
+pub fn html_body(blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>) -> String {
     let mut body = String::new();
     for it in items(blocks) {
         let mut style = String::new();
@@ -355,6 +355,12 @@ pub fn to_html(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Optio
             Kind::File => body.push_str(&format!("<p{attr}>📎 {text}</p>\n")),
         }
     }
+    body
+}
+
+/// A standalone HTML page (images are embedded).
+pub fn to_html(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>) -> String {
+    let body = html_body(blocks, read_asset);
     format!(
         "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>{t}</title>\n<style>\n\
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:46rem;margin:3rem auto;padding:0 1rem;line-height:1.6;color:#37352f}}\n\

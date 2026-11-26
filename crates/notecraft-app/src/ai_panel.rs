@@ -146,6 +146,15 @@ pub struct Draft {
 /// A request in flight: what was asked, where the answer will arrive, and when it started.
 pub type RunningAi = (AiAction, Receiver<Result<String, AiError>>, Instant);
 
+/// A model download: name, bytes done and total (shared with the thread), and the final result.
+pub struct PullJob {
+    pub model: String,
+    pub done: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub total: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub rx: Receiver<Result<(), AiError>>,
+}
+
 #[derive(Default)]
 pub struct AiState {
     /// The key box under the AI line of the settings is open.
@@ -160,6 +169,8 @@ pub struct AiState {
     pub models: Vec<String>,
     pub models_loading: Option<Receiver<Result<Vec<String>, AiError>>>,
     pub models_error: Option<String>,
+    /// A local model being downloaded through Ollama.
+    pub pull: Option<PullJob>,
     pub key_input: String,
     pub key_status: Option<String>,
     pub openai_key_status: Option<String>,
@@ -231,6 +242,31 @@ impl NcApp {
         if self.ai.models.is_empty() && self.prefs.ai.engine == EngineChoice::Ollama {
             self.refresh_models();
         }
+    }
+
+    /// Download `model` into Ollama; the list is asked again when it is done.
+    pub fn start_pull(&mut self, model: &str) {
+        use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+        use std::sync::Arc;
+        if self.ai.pull.is_some() {
+            return;
+        }
+        let url = self.prefs.ai.ollama_url.clone();
+        let (done, total, cancel) =
+            (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)), Arc::new(AtomicBool::new(false)));
+        let (d2, t2, c2) = (done.clone(), total.clone(), cancel.clone());
+        let name = model.to_string();
+        let (tx, rx) = channel();
+        std::thread::spawn(move || {
+            let r = notecraft_ai::ollama_pull(&url, &name, |d, t| {
+                d2.store(d, Ordering::Relaxed);
+                t2.store(t, Ordering::Relaxed);
+                !c2.load(Ordering::Relaxed)
+            });
+            let _ = tx.send(r);
+        });
+        self.ai.models_error = None;
+        self.ai.pull = Some(PullJob { model: model.to_string(), done, total, cancel, rx });
     }
 
     pub fn refresh_models(&mut self) {
@@ -408,6 +444,22 @@ impl NcApp {
 
     /// Collect answers from the background threads.
     pub fn poll_ai(&mut self, ctx: &egui::Context) {
+        if let Some(job) = &self.ai.pull {
+            if let Ok(r) = job.rx.try_recv() {
+                let name = job.model.clone();
+                self.ai.pull = None;
+                match r {
+                    Ok(()) => {
+                        self.prefs.ai.ollama_model = name;
+                        self.ai.models_error = None;
+                        self.refresh_models();
+                    }
+                    Err(e) => self.ai.models_error = Some(e.to_string()),
+                }
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_millis(300));
+            }
+        }
         if let Some(rx) = &self.ai.models_loading {
             if let Ok(r) = rx.try_recv() {
                 match r {

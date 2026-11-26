@@ -341,6 +341,39 @@ pub fn ollama_models(url: &str, t: Timeouts) -> Result<Vec<String>, AiError> {
     Ok(names)
 }
 
+/// Downloads a model into Ollama (`POST /api/pull`), which streams its progress line by line.
+/// `progress(done, total)` is called as bytes arrive and returns false to stop.
+pub fn ollama_pull(url: &str, model: &str, mut progress: impl FnMut(u64, u64) -> bool) -> Result<(), AiError> {
+    use std::io::BufRead;
+    let base = trim_url(url);
+    let t = Timeouts { connect: Duration::from_secs(4), total: Duration::from_secs(4 * 3600) };
+    let mut resp = agent(t)
+        .post(format!("{base}/api/pull"))
+        .send_json(json!({"model": model, "stream": true}))
+        .map_err(|e| map_err(e, Some(&base)))?;
+    let status = resp.status().as_u16();
+    if status != 200 {
+        let body = resp.body_mut().read_to_string().unwrap_or_default();
+        return Err(AiError::Api(status, body));
+    }
+    let reader = std::io::BufReader::new(resp.into_body().into_reader());
+    for line in reader.lines() {
+        let line = line.map_err(|e| AiError::Network(e.to_string()))?;
+        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+        if let Some(e) = v["error"].as_str() {
+            return Err(AiError::BadResponse(e.to_string()));
+        }
+        let total = v["total"].as_u64().unwrap_or(0);
+        if total > 0 && !progress(v["completed"].as_u64().unwrap_or(0), total) {
+            return Err(AiError::Network("cancelled".into()));
+        }
+        if v["status"].as_str() == Some("success") {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
 /// Models the Claude API offers to this key (`GET /v1/models`), newest first as the API sends them.
 /// The list changes when Anthropic releases a model, so it is fetched, never hard-coded.
 pub fn claude_models(url: &str, api_key: &str, t: Timeouts) -> Result<Vec<String>, AiError> {
