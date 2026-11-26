@@ -1749,7 +1749,7 @@ impl EditorState {
                             };
                         } else if i.consume_key(none, Key::Tab) {
                             target = Some(if c + 1 < cols { (r, c + 1) } else { (r + 1, 0) });
-                        } else if i.consume_key(none, Key::Enter) {
+                        } else if !i.modifiers.shift && i.consume_key(none, Key::Enter) {
                             target = Some((r + 1, c));
                         } else if first && r > 0 && i.consume_key(none, Key::ArrowUp) {
                             target = Some((r - 1, c));
@@ -1838,6 +1838,7 @@ impl EditorState {
                                                     .unwrap_or_else(|| cell.clone());
                                                 let o = egui::TextEdit::multiline(&mut buf)
                                                     .desired_rows(1)
+                                                    .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
                                                     .id(cid)
                                                     .frame(egui::Frame::NONE)
                                                     .desired_width(col_ws[ci] - 18.0)
@@ -1861,7 +1862,7 @@ impl EditorState {
                                                         });
                                                     }
                                                 }
-                                                let buf = buf.replace(['\n', '\r'], " ");
+                                                let buf = buf.replace('\r', "");
                                                 ui.data_mut(|d| d.insert_temp(raw_id, buf.clone()));
                                                 *cell = buf.trim().to_string();
                                                 if self.table_focus == Some((bid, ri, ci)) {
@@ -2150,20 +2151,38 @@ impl EditorState {
                                         }
                                     }
                                     if has_transcript {
-                                        let opts: Vec<(String, Glyph, String)> = notecraft_ai::NOTE_TEMPLATES
-                                            .iter()
-                                            .map(|k| {
-                                                (
-                                                    (*k).to_string(),
-                                                    Glyph::None,
-                                                    crate::meeting::template_label(lang, k).to_string(),
-                                                )
-                                            })
-                                            .collect();
-                                        let mut cur = v.template.clone();
-                                        if cycle(ui, pal, &mut cur, &opts, true) {
-                                            act = Some(crate::meeting::MeetingAction::SetTemplate(cur));
-                                        }
+                                        let cur_label = match v.custom_templates.iter().find(|(k, _)| *k == v.template) {
+                                            Some((_, t)) => t.clone(),
+                                            None => crate::meeting::template_label(lang, &v.template).to_string(),
+                                        };
+                                        ui.menu_button(RichText::new(format!("{cur_label} \u{25be}")).size(13.0), |ui| {
+                                            for k in notecraft_ai::NOTE_TEMPLATES {
+                                                if ui
+                                                    .selectable_label(
+                                                        v.template == *k,
+                                                        crate::meeting::template_label(lang, k),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    act = Some(crate::meeting::MeetingAction::SetTemplate((*k).to_string()));
+                                                    ui.close();
+                                                }
+                                            }
+                                            if !v.custom_templates.is_empty() {
+                                                ui.separator();
+                                                for (k, t) in &v.custom_templates {
+                                                    if ui.selectable_label(v.template == *k, t).clicked() {
+                                                        act = Some(crate::meeting::MeetingAction::SetTemplate(k.clone()));
+                                                        ui.close();
+                                                    }
+                                                }
+                                            }
+                                            ui.separator();
+                                            if ui.button(tr(lang, "meeting_manage_templates")).clicked() {
+                                                act = Some(crate::meeting::MeetingAction::ManageTemplates);
+                                                ui.close();
+                                            }
+                                        });
                                         let l = if has_notes {
                                             tr(lang, "meeting_rewrite_notes")
                                         } else {
@@ -2172,6 +2191,9 @@ impl EditorState {
                                         if text_link(ui, pal, l).clicked() {
                                             act = Some(crate::meeting::MeetingAction::Notes(bid));
                                         }
+                                    }
+                                    if text_link(ui, pal, tr(lang, "meeting_reset")).clicked() {
+                                        act = Some(crate::meeting::MeetingAction::ResetSettings);
                                     }
                                 });
                             }
@@ -2569,14 +2591,9 @@ impl EditorState {
                     match &kind {
                         BlockKind::Bulleted => {
                             let (rect, _) = ui.allocate_exact_size(Vec2::new(marker_w, line_h), Sense::hover());
-                            let glyph = ["•", "◦", "▪"][blocks[i].depth as usize % 3];
-                            ui.painter().text(
-                                rect.center(),
-                                Align2::CENTER_CENTER,
-                                glyph,
-                                FontId::proportional(19.0),
-                                pal.text,
-                            );
+                            // one simple dot at every level, a little lighter when nested
+                            let colour = if blocks[i].depth == 0 { pal.text } else { pal.text_faint };
+                            ui.painter().circle_filled(rect.center() + Vec2::new(0.0, 1.0), 2.6, colour);
                             text_width -= marker_w + gap;
                         }
                         BlockKind::Numbered => {

@@ -108,6 +108,73 @@ const BLOCK: [&str; 26] = [
     "caption",
 ];
 
+/// The palette colour name closest to a CSS colour (`#d44c47`, `rgb(…)`, `red`), or `None` for the
+/// default text colours (black, dark grey, white) that a mail adds to every line.
+fn palette_color(css: &str) -> Option<&'static str> {
+    let css = css.trim();
+    let (r, g, b) = if let Some(hex) = css.strip_prefix('#') {
+        let v: Vec<u8> = match hex.len() {
+            3 => hex.chars().filter_map(|c| c.to_digit(16)).map(|d| (d * 17) as u8).collect(),
+            6 => (0..3).filter_map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()).collect(),
+            _ => return None,
+        };
+        if v.len() != 3 {
+            return None;
+        }
+        (v[0], v[1], v[2])
+    } else if let Some(args) = css.strip_prefix("rgb(").and_then(|r| r.strip_suffix(')')) {
+        let v: Vec<u8> = args.split(',').filter_map(|x| x.trim().parse::<f32>().ok()).map(|x| x as u8).collect();
+        if v.len() < 3 {
+            return None;
+        }
+        (v[0], v[1], v[2])
+    } else {
+        return match css {
+            "red" => Some("red"),
+            "green" => Some("green"),
+            "blue" => Some("blue"),
+            "orange" => Some("orange"),
+            "purple" => Some("purple"),
+            "pink" => Some("pink"),
+            "yellow" => Some("yellow"),
+            "brown" => Some("brown"),
+            "gray" | "grey" => Some("gray"),
+            _ => None,
+        };
+    };
+    let (rf, gf, bf) = (f32::from(r) / 255.0, f32::from(g) / 255.0, f32::from(b) / 255.0);
+    let max = rf.max(gf).max(bf);
+    let min = rf.min(gf).min(bf);
+    let l = (max + min) / 2.0;
+    let d = max - min;
+    let sat = if d == 0.0 { 0.0 } else { d / (1.0 - (2.0 * l - 1.0).abs()) };
+    if sat < 0.18 {
+        return if (0.38..0.7).contains(&l) { Some("gray") } else { None };
+    }
+    let h = if max == rf {
+        60.0 * (((gf - bf) / d).rem_euclid(6.0))
+    } else if max == gf {
+        60.0 * ((bf - rf) / d + 2.0)
+    } else {
+        60.0 * ((rf - gf) / d + 4.0)
+    };
+    Some(match h {
+        h if !(15.0..345.0).contains(&h) => "red",
+        h if h < 40.0 => {
+            if l < 0.4 {
+                "brown"
+            } else {
+                "orange"
+            }
+        }
+        h if h < 65.0 => "yellow",
+        h if h < 170.0 => "green",
+        h if h < 255.0 => "blue",
+        h if h < 300.0 => "purple",
+        _ => "pink",
+    })
+}
+
 impl<'a, 'r> Conv<'a, 'r> {
     fn push_text(&mut self, s: &str) {
         if self.pre {
@@ -317,6 +384,12 @@ impl<'a, 'r> Conv<'a, 'r> {
         let under = style.contains("underline");
         let mut open = String::new();
         let mut close = String::new();
+        let css = style.split(';').find_map(|p| p.strip_prefix("color:")).map(str::to_string);
+        let css = css.or_else(|| attrs_of(node).get("color").map(|c| c.to_lowercase()));
+        if let Some(name) = css.as_deref().and_then(palette_color) {
+            open.push_str(&format!("<span style=\"color:{name}\">"));
+            close.insert_str(0, "</span>");
+        }
         if bold {
             open.push_str("**");
             close.insert_str(0, "**");

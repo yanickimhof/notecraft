@@ -56,7 +56,7 @@ pub struct Hooks<'a> {
     pub diagram: &'a dyn Fn(&str, &str) -> Option<String>,
 }
 
-const COVERS: [(&str, &str); 8] = [
+const COVERS: [(&str, &str); 24] = [
     ("#F6D365", "#FDA085"),
     ("#A1C4FD", "#C2E9FB"),
     ("#D4FC79", "#96E6A1"),
@@ -65,6 +65,22 @@ const COVERS: [(&str, &str); 8] = [
     ("#E0C3FC", "#8EC5FC"),
     ("#FFECD2", "#FCB69F"),
     ("#434E5E", "#8E9EAB"),
+    ("#FF9A9E", "#FECFEF"),
+    ("#84FAB0", "#8FD3F4"),
+    ("#FDCB6E", "#E17055"),
+    ("#667EEA", "#764BA2"),
+    ("#43E97B", "#38F9D7"),
+    ("#FA709A", "#FEE140"),
+    ("#30CFD0", "#330867"),
+    ("#A8EDEA", "#FED6E3"),
+    ("#F093FB", "#F5576C"),
+    ("#4FACFE", "#00F2FE"),
+    ("#0F2027", "#2C5364"),
+    ("#C79081", "#DFA579"),
+    ("#E8CBC0", "#636FA4"),
+    ("#D299C2", "#FEF9D7"),
+    ("#89F7FE", "#66A6FF"),
+    ("#232526", "#414345"),
 ];
 
 /// (name, light text, dark text, light background, dark background), as in the app.

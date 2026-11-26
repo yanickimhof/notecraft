@@ -115,6 +115,14 @@ impl NcApp {
         }
         let mut go = None;
         ui.add_space(18.0);
+        // a thin line sets the sub-pages apart from the page
+        ui.horizontal(|ui| {
+            ui.add_space(GUTTER);
+            let w = (ui.available_width() - GUTTER).max(0.0);
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 1.0), Sense::hover());
+            ui.painter().hline(rect.x_range(), rect.center().y, egui::Stroke::new(1.0, pal.border));
+        });
+        ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.add_space(GUTTER);
             ui.label(RichText::new(tr(lang, "subpages")).size(12.5).color(pal.text_faint));
@@ -203,11 +211,31 @@ impl NcApp {
                     }
                 }
             }
-            if child.add(style_btn(self.t("change_cover"))).clicked() {
-                let n =
-                    cover.strip_prefix("gradient:").and_then(|n| n.parse::<usize>().ok()).map(|n| n + 1).unwrap_or(0);
-                new_cover = Some(format!("gradient:{}", n % COVERS.len()));
-            }
+            let change = child.add(style_btn(self.t("change_cover")));
+            egui::Popup::menu(&change).show(|ui| {
+                ui.set_min_width(300.0);
+                egui::Grid::new("cover-gallery").spacing(Vec2::splat(6.0)).show(ui, |ui| {
+                    for (n, (a, b)) in COVERS.iter().enumerate() {
+                        let (rect, resp) = ui.allocate_exact_size(Vec2::new(44.0, 28.0), Sense::click());
+                        theme::paint_gradient(&ui.painter().with_clip_rect(rect), rect, *a, *b);
+                        if resp.hovered() {
+                            ui.painter().rect_stroke(
+                                rect,
+                                CornerRadius::same(3),
+                                egui::Stroke::new(2.0, pal.accent),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
+                        if resp.clicked() {
+                            new_cover = Some(format!("gradient:{n}"));
+                            ui.close();
+                        }
+                        if n % 6 == 5 {
+                            ui.end_row();
+                        }
+                    }
+                });
+            });
             if let (Some(c), Target::Doc(d), Some(ws)) = (new_cover, target, self.ws.as_mut()) {
                 let _ = ws.set_cover(d, &c);
             }

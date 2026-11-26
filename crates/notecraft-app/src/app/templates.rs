@@ -27,9 +27,58 @@ pub fn template_results(ws: &Workspace, query: &str) -> Vec<SearchResult> {
     let q = query.trim().to_lowercase();
     ws.children(Some(&root))
         .into_iter()
-        .filter(|c| matches!(c.doc, DocId::Page(_)) && (q.is_empty() || c.title.to_lowercase().contains(&q)))
+        .filter(|c| matches!(c.doc, DocId::Page(_)) && !is_notes_title(&c.title) && (q.is_empty() || c.title.to_lowercase().contains(&q)))
         .map(|c| SearchResult { doc: c.doc, title: c.title, icon: c.icon, snippet: String::new(), path: String::new() })
         .collect()
+}
+
+/// Title of the group of note templates (the instructions the AI follows to write meeting notes).
+fn is_notes_title(t: &str) -> bool {
+    let t = t.trim().to_lowercase();
+    t == "meeting notes" || t == "notes de réunion" || t == "notes de reunion"
+}
+
+/// The id of the group page that holds the note templates, inside the templates page.
+pub fn notes_group(ws: &Workspace) -> Option<String> {
+    let root = templates_root(ws)?;
+    ws.children(Some(&root)).into_iter().find_map(|c| match c.doc {
+        DocId::Page(id) if is_notes_title(&c.title) => Some(id),
+        _ => None,
+    })
+}
+
+/// The note templates written by the user: (key, title). The key is `page:<id>`.
+pub fn note_templates(ws: &Workspace) -> Vec<(String, String)> {
+    let Some(group) = notes_group(ws) else { return vec![] };
+    ws.children(Some(&group))
+        .into_iter()
+        .filter_map(|c| match c.doc {
+            DocId::Page(id) => Some((format!("page:{id}"), c.title)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The text of the note template `key` (`page:<id>`), as Markdown.
+pub fn note_template_text(ws: &Workspace, key: &str) -> Option<String> {
+    let id = key.strip_prefix("page:")?;
+    let blocks = ws.blocks(&DocId::Page(id.to_string()))?;
+    let md = blocks::to_markdown(blocks);
+    (!md.trim().is_empty()).then_some(md)
+}
+
+fn sample_note_template(fr: bool) -> (&'static str, &'static str) {
+    if fr {
+        (
+            "Décisions et points ouverts",
+            "Écris des notes courtes avec ces titres : ## Contexte (2 lignes), ## Décisions (puces), ## Points ouverts (puces), ## Actions (cases à cocher avec responsable et échéance si dits). N'invente rien.",
+        )
+    } else {
+        (
+            "Decisions and open points",
+            "Write short notes with these headings: ## Context (2 lines), ## Decisions (bullets), ## Open points (bullets), ## Actions (to-dos with owner and due date when stated). Invent nothing.",
+        )
+    }
 }
 
 fn minutes(fr: bool) -> (&'static str, &'static str) {
@@ -47,38 +96,70 @@ fn minutes(fr: bool) -> (&'static str, &'static str) {
 }
 
 impl NcApp {
-    /// Makes sure the templates page exists, with the standard meeting minutes in it.
+    /// Makes sure the templates page exists, with the standard meeting minutes in it and the group of note
+    /// templates (what the AI follows to write the notes of a recorded meeting).
     pub fn ensure_templates(&mut self) {
         let fr = self.prefs.lang == Lang::Fr;
         let Some(ws) = self.ws.as_mut() else { return };
-        if templates_root(ws).is_some() {
+        if templates_root(ws).is_some() && notes_group(ws).is_some() {
             return;
         }
-        let (title, intro) = if fr {
-            (
-                "Modèles",
-                "Chaque sous-page de cette page est un modèle. Écrivez ou modifiez-la comme une page ordinaire, puis insérez-la où vous voulez avec / puis Modèle. {{date}} devient la date du jour.",
-            )
-        } else {
-            (
-                "Templates",
-                "Each sub-page of this page is a template. Write or edit it like any page, then insert it anywhere with / then Template. {{date}} becomes today's date.",
-            )
-        };
         let result = (|| -> notecraft_core::Result<()> {
-            let root = ws.create_page(None, title)?;
+            let root = match templates_root(ws) {
+                Some(r) => r,
+                None => {
+                    let (title, intro) = if fr {
+                        (
+                            "Modèles",
+                            "Chaque sous-page de cette page est un modèle de page. Écrivez ou modifiez-la comme une page ordinaire, puis insérez-la où vous voulez avec / puis Modèle. {{date}} devient la date du jour. Les modèles de notes de réunion sont dans la page « Notes de réunion ».",
+                        )
+                    } else {
+                        (
+                            "Templates",
+                            "Each sub-page of this page is a page template. Write or edit it like any page, then insert it anywhere with / then Template. {{date}} becomes today's date. Templates for meeting notes are in the \"Meeting notes\" page.",
+                        )
+                    };
+                    let root = ws.create_page(None, title)?;
+                    {
+                        let p = ws.pages.get_mut(&root).unwrap();
+                        p.meta.icon = "📋".into();
+                        p.blocks = vec![Block::paragraph(intro)];
+                    }
+                    ws.save_page(&root)?;
+                    let (name, md) = minutes(fr);
+                    let sub = ws.create_page(Some(&root), name)?;
+                    {
+                        let p = ws.pages.get_mut(&sub).unwrap();
+                        p.meta.icon = "📝".into();
+                        p.blocks = blocks::from_markdown(md);
+                    }
+                    ws.save_page(&sub)?;
+                    root
+                }
+            };
+            let (gtitle, gintro) = if fr {
+                (
+                    "Notes de réunion",
+                    "Chaque sous-page est un modèle de notes : écrivez-y la structure et les consignes que l'IA suit pour rédiger les notes d'une réunion enregistrée. Le modèle se choisit dans le bloc de réunion.",
+                )
+            } else {
+                (
+                    "Meeting notes",
+                    "Each sub-page is a notes template: write the structure and the instructions the AI follows to write the notes of a recorded meeting. Pick the template in the meeting block.",
+                )
+            };
+            let group = ws.create_page(Some(&root), gtitle)?;
             {
-                let p = ws.pages.get_mut(&root).unwrap();
-                p.meta.icon = "📋".into();
-                p.blocks = vec![Block::paragraph(intro)];
+                let p = ws.pages.get_mut(&group).unwrap();
+                p.meta.icon = "🎙".into();
+                p.blocks = vec![Block::paragraph(gintro)];
             }
-            ws.save_page(&root)?;
-            let (name, md) = minutes(fr);
-            let sub = ws.create_page(Some(&root), name)?;
+            ws.save_page(&group)?;
+            let (name, text) = sample_note_template(fr);
+            let sub = ws.create_page(Some(&group), name)?;
             {
                 let p = ws.pages.get_mut(&sub).unwrap();
-                p.meta.icon = "📝".into();
-                p.blocks = blocks::from_markdown(md);
+                p.blocks = vec![Block::paragraph(text)];
             }
             ws.save_page(&sub)?;
             Ok(())

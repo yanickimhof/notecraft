@@ -65,6 +65,32 @@ impl EditorState {
         let caret = cursor_range(ctx, id).unwrap_or((0, 0));
         let len = char_len(&blocks[i].text);
 
+        // copying or cutting a part of the text keeps its formatting (bold, colours, links) as HTML
+        if rich && caret.0 != caret.1 {
+            let (copy, cut) = ctx.input(|inp| {
+                (
+                    inp.events.iter().any(|e| matches!(e, egui::Event::Copy)),
+                    inp.events.iter().any(|e| matches!(e, egui::Event::Cut)),
+                )
+            });
+            if copy || cut {
+                ctx.input_mut(|inp| inp.events.retain(|e| !matches!(e, egui::Event::Copy | egui::Event::Cut)));
+                let (a, b) = (caret.0.min(caret.1), caret.0.max(caret.1));
+                let frag: String = blocks[i].text.chars().skip(a).take(b - a).collect();
+                super::richpaste::copy_blocks(ctx, &[Block::paragraph(&frag)]);
+                if cut {
+                    let before = blocks.clone();
+                    let kept: String =
+                        blocks[i].text.chars().take(a).chain(blocks[i].text.chars().skip(b)).collect();
+                    blocks[i].text = kept;
+                    self.focus = Some((bid, Caret::At(a)));
+                    self.record(env.key, &before, None);
+                    out.changed = true;
+                    return;
+                }
+            }
+        }
+
         // pasting several lines (or Markdown blocks) makes blocks instead of one long block; HTML on the
         // clipboard (Outlook, Word, a web page) keeps its structure and formatting
         if rich {
@@ -989,7 +1015,11 @@ impl EditorState {
                     ui.label(RichText::new(tr(env.lang, "no_results")).color(pal.text_faint));
                     return;
                 }
-                egui::ScrollArea::vertical().max_height((h - 44.0).clamp(120.0, 560.0)).show(ui, |ui| {
+                let list_h = (h - 44.0).clamp(120.0, 560.0);
+                egui::ScrollArea::vertical()
+                    .max_height(list_h)
+                    .min_scrolled_height(list_h.min(items.len() as f32 * 46.0))
+                    .show(ui, |ui| {
                     let mut last_section = "basic_blocks";
                     for (k, it) in items.iter().enumerate() {
                         let section = match it.key {
@@ -1396,6 +1426,10 @@ impl EditorState {
                 for b in &mut blocks[lo..hi] {
                     if b.kind.has_rich_text() {
                         b.color = blocks::merge_color(&b.color, &color, bg);
+                        if !bg {
+                            // words coloured one by one would otherwise keep their own colour
+                            b.text = notecraft_core::inline::strip_colors(&b.text);
+                        }
                     }
                 }
                 // the selection highlight would hide the new colour

@@ -547,7 +547,7 @@ pub(super) fn options_editor(
     ws: &mut Workspace,
     db: &str,
     pid: &str,
-    pal: &Palette,
+    _pal: &Palette,
     lang: Lang,
     actions: &mut Vec<DbAction>,
 ) {
@@ -555,6 +555,7 @@ pub(super) fn options_editor(
     let mut opts = p.options.clone();
     let mut changed = false;
     let mut remove = None;
+    let mut rename: Option<(String, String)> = None;
     let group_label = |g: StatusGroup| match g {
         StatusGroup::ToDo => tr(lang, "group_to_do"),
         StatusGroup::InProgress => tr(lang, "group_in_progress"),
@@ -562,7 +563,16 @@ pub(super) fn options_editor(
     };
     for (k, o) in opts.iter_mut().enumerate() {
         ui.horizontal(|ui| {
-            chip(ui, pal, &o.name, &o.color);
+            // the name is editable: a rename reaches every row that holds the tag
+            let buf_id = Id::unique(("opt-name", pid, k, &o.name));
+            let mut nm: String = ui.data_mut(|d| d.get_temp(buf_id)).unwrap_or_else(|| o.name.clone());
+            let r = ui.add(egui::TextEdit::singleline(&mut nm).desired_width(120.0));
+            ui.data_mut(|d| d.insert_temp(buf_id, nm.clone()));
+            let new = nm.trim().to_string();
+            if r.lost_focus() && !new.is_empty() && new != o.name && !p.options.iter().any(|x| x.name == new) {
+                rename = Some((o.name.clone(), new));
+                ui.data_mut(|d| d.remove_temp::<String>(buf_id));
+            }
             crate::widgets::name_combo(
                 egui::ComboBox::from_id_salt(("opt-color", pid, k)).selected_text(o.color.clone()).width(90.0).show_ui(
                     ui,
@@ -599,15 +609,28 @@ pub(super) fn options_editor(
             }
         });
     }
+    let removed_name = remove.map(|k| opts[k].name.clone());
     if let Some(k) = remove {
         opts.remove(k);
         changed = true;
+    }
+    if let Some((old, new)) = &rename {
+        if let Some(o) = opts.iter_mut().find(|o| o.name == *old) {
+            o.name = new.clone();
+            changed = true;
+        }
     }
     if changed {
         if let Some(pp) = ws.dbs.get_mut(db).and_then(|d| d.schema.properties.iter_mut().find(|x| x.id == pid)) {
             pp.options = opts;
         }
         save_schema(ws, db, actions);
+        if let Some((old, new)) = &rename {
+            carry_option(ws, db, &p, old, Some(new), actions);
+        }
+        if let Some(old) = &removed_name {
+            carry_option(ws, db, &p, old, None, actions);
+        }
     }
 }
 

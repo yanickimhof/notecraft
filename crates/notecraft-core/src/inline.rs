@@ -479,26 +479,33 @@ pub fn delete_visible(text: &str, pos: usize, backward: bool) -> Option<(String,
     }
 }
 
-/// Colour (a name such as `red`, or `None` for the default) on a selection of chars.
-/// Colours already inside the selection are replaced; a selection that is exactly the
-/// content of a coloured span changes that span. Returns the new text and selection.
-pub fn set_color(text: &str, sel: (usize, usize), color: Option<&str>) -> (String, (usize, usize)) {
-    let (a, b) = if sel.0 <= sel.1 { sel } else { (sel.1, sel.0) };
-    let (ba, bb) = (char_to_byte(text, a), char_to_byte(text, b));
-    let mut before = text[..ba].to_string();
-    let mut after = text[bb..].to_string();
-    let mut inner = text[ba..bb].to_string();
-    // the selection is exactly the content of one span: take its tags off first
-    if let Some(at) = before.rfind(COLOR_OPEN) {
-        let tag = &before[at..];
-        if tag.ends_with("\">") && !tag[COLOR_OPEN.len()..tag.len() - 2].contains('"') && after.starts_with("</span>") {
-            before.truncate(at);
-            after = after[7..].to_string();
+/// The colour span left open at the end of `s` (its full opening tag), if any.
+fn open_color_tag(s: &str) -> Option<String> {
+    let mut stack: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < s.len() {
+        let rest = &s[i..];
+        if rest.starts_with(COLOR_OPEN) {
+            if let Some(gt) = rest.find("\">") {
+                stack.push(rest[..gt + 2].to_string());
+                i += gt + 2;
+                continue;
+            }
         }
+        if rest.starts_with("</span>") {
+            stack.pop();
+            i += 7;
+            continue;
+        }
+        i += rest.chars().next().map_or(1, |c| c.len_utf8());
     }
-    // drop colour tags inside the selection
-    let mut cleaned = String::new();
-    let mut rest = inner.as_str();
+    stack.pop()
+}
+
+/// `text` without any colour span (the tags go, the words stay).
+pub fn strip_colors(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
     while !rest.is_empty() {
         if let Some(tail) = rest.strip_prefix(COLOR_OPEN) {
             if let Some(gt) = tail.find("\">") {
@@ -511,10 +518,88 @@ pub fn set_color(text: &str, sel: (usize, usize), color: Option<&str>) -> (Strin
             continue;
         }
         let c = rest.chars().next().unwrap();
-        cleaned.push(c);
+        out.push(c);
         rest = &rest[c.len_utf8()..];
     }
-    inner = cleaned;
+    out
+}
+
+/// Colour spans with nothing inside.
+fn drop_empty_spans(s: &str) -> String {
+    let mut s = s.to_string();
+    while let Some(at) = s.find(COLOR_OPEN) {
+        let Some(gt) = s[at..].find("\">") else { break };
+        let end = at + gt + 2;
+        if s[end..].starts_with("</span>") {
+            s.replace_range(at..end + 7, "");
+        } else {
+            break;
+        }
+    }
+    s
+}
+
+/// Colour (a name such as `red`, or `None` for the default) on a selection of chars.
+/// Colours already inside the selection are replaced; a span that the selection cuts is
+/// closed before it and reopened after it. Returns the new text and selection.
+pub fn set_color(text: &str, sel: (usize, usize), color: Option<&str>) -> (String, (usize, usize)) {
+    let (a, b) = if sel.0 <= sel.1 { sel } else { (sel.1, sel.0) };
+    let (ba, bb) = (char_to_byte(text, a), char_to_byte(text, b));
+    let mut before = text[..ba].to_string();
+    let mut after = text[bb..].to_string();
+    let inner = strip_colors(&text[ba..bb]);
+    // a span opened before the selection: it stops at the selection and starts again after it
+    if let Some(tag) = open_color_tag(&before) {
+        let closes_inside = {
+            let mut depth = 0i32;
+            let mut closed = false;
+            let mut rest = &text[ba..bb];
+            while !rest.is_empty() {
+                if rest.starts_with(COLOR_OPEN) {
+                    depth += 1;
+                } else if rest.starts_with("</span>") {
+                    if depth == 0 {
+                        closed = true;
+                        break;
+                    }
+                    depth -= 1;
+                }
+                rest = &rest[rest.chars().next().map_or(1, |c| c.len_utf8())..];
+            }
+            closed
+        };
+        before.push_str("</span>");
+        if !closes_inside {
+            after = format!("{tag}{after}");
+        }
+    }
+    // a span opened inside the selection and closed after it
+    {
+        let mut depth = 0i32;
+        let mut rest = &text[ba..bb];
+        let mut last: Option<String> = None;
+        while !rest.is_empty() {
+            if rest.starts_with(COLOR_OPEN) {
+                if let Some(gt) = rest.find("\">") {
+                    depth += 1;
+                    last = Some(rest[..gt + 2].to_string());
+                    rest = &rest[gt + 2..];
+                    continue;
+                }
+            } else if rest.starts_with("</span>") {
+                depth -= 1;
+                rest = &rest[7..];
+                continue;
+            }
+            rest = &rest[rest.chars().next().map_or(1, |c| c.len_utf8())..];
+        }
+        // the part of that span after the selection keeps its colour
+        if let (true, Some(tag)) = (depth > 0, last) {
+            after = format!("{tag}{after}");
+        }
+    }
+    let before = drop_empty_spans(&before);
+    let after = drop_empty_spans(&after);
     let (open, close) = match color {
         Some(c) if !inner.is_empty() => (format!("{COLOR_OPEN}{c}\">"), "</span>".to_string()),
         _ => (String::new(), String::new()),
@@ -881,5 +966,16 @@ mod tests {
             "no link found in {:?}",
             parse(t).iter().map(|s| (&t[s.range.clone()], s.marker)).collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn recolouring_a_line_replaces_the_colours_inside_and_keeps_tags_balanced() {
+        let t = "a <span style=\"color:red\">b c</span> d";
+        let (out, _) = set_color(t, (0, 27), Some("blue"));
+        assert_eq!(out.matches("<span").count(), out.matches("</span>").count());
+        assert_eq!(out, "<span style=\"color:blue\">a b</span><span style=\"color:red\"> c</span> d");
+        let (all, _) = set_color(t, (0, t.chars().count()), Some("green"));
+        assert_eq!(all, "<span style=\"color:green\">a b c d</span>");
+        assert_eq!(strip_colors(t), "a b c d");
     }
 }

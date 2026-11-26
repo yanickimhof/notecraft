@@ -445,7 +445,12 @@ fn rows_to_cells(rows: &[String]) -> Vec<Vec<String>> {
         .iter()
         .enumerate()
         .filter(|(i, r)| !(*i == 1 && is_table_separator(r)))
-        .map(|(_, r)| split_row(r))
+        .map(|(_, r)| {
+            split_row(r)
+                .into_iter()
+                .map(|c| c.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n"))
+                .collect()
+        })
         .collect();
     let width = cells.iter().map(Vec::len).max().unwrap_or(1).max(1);
     for r in &mut cells {
@@ -468,7 +473,7 @@ pub fn table_cells(text: &str) -> Vec<Vec<String>> {
 pub fn cells_to_text(cells: &[Vec<String>]) -> String {
     let width = cells.iter().map(Vec::len).max().unwrap_or(1).max(1);
     let row = |r: &Vec<String>| {
-        let mut parts: Vec<String> = r.iter().map(|c| c.replace('|', "\\|").replace(['\n', '\r'], " ")).collect();
+        let mut parts: Vec<String> = r.iter().map(|c| c.replace('|', "\\|").replace('\r', "").replace('\n', "<br>")).collect();
         parts.resize(width, String::new());
         format!("| {} |", parts.join(" | "))
     };

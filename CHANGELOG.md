@@ -2,6 +2,23 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.5.4 (2026-11-26)
+
+### Added
+- Note templates for recorded meetings: a "Meeting notes" page inside Templates holds them (each sub-page is one, written as instructions for the AI). The meeting block has a template menu with the built-in ones and yours, and a Reset link that puts the meeting settings back to their defaults.
+- Local models: Settings, AI lists suggested models with a download button, the progress and a choose button.
+- More covers: 24 gradients, picked from a gallery.
+- Simple tables: Shift Enter adds a line break inside a cell.
+- Database tags can be renamed in the options editor; renaming or deleting a tag updates every row.
+
+### Changed
+- Copying part of a text keeps its formatting (bold, colours, links) when pasted in a mail or a document, and colours from a mail or web page are pasted as colours.
+- Bullets use one simple dot at every level.
+
+### Fixed
+- Colouring a whole line now also recolours the words that had a colour of their own.
+- The slash menu keeps its height when the page is short.
+
 ## 0.5.3 (2026-11-26)
 
 ### Added

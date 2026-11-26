@@ -25,7 +25,8 @@ mod tabs;
 mod templates;
 mod webpub;
 pub use system::*;
-pub use templates::template_results;
+pub use templates::{note_template_text, note_templates, template_results};
+pub(crate) use templates::notes_group;
 pub use webpub::{GuardAction, PubAct, PubGuard, SubdomainDlg};
 /// A page, database or template that exists and is not in the trash, nor under something that is.
 /// It is the only kind a tab or the open page may show: a trashed page must close, not stay on screen.

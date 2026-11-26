@@ -257,6 +257,9 @@ fn html_runs(runs: &[Run]) -> String {
         if st.strike {
             s = format!("<s>{s}</s>");
         }
+        if let Some((hex, false)) = st.color.as_deref().and_then(css_color) {
+            s = format!("<span style=\"color:{hex}\">{s}</span>");
+        }
         if let Some(url) = &st.link {
             s = format!("<a href=\"{}\">{s}</a>", escape(url));
         } else if st.mention.is_some() {

@@ -69,6 +69,10 @@ pub enum MeetingAction {
     /// Write (or rewrite) the notes of the meeting block from its transcript.
     Notes(u64),
     SetTemplate(String),
+    /// Open the page that holds the note templates (creating it when needed).
+    ManageTemplates,
+    /// Put the meeting settings back to their defaults.
+    ResetSettings,
     OpenMicSettings,
     OpenAudioSettings,
     SetMicrophone(String),
@@ -93,6 +97,8 @@ pub struct View {
     pub model_label: String,
     pub model_mb: u32,
     pub template: String,
+    /// Note templates written by the user (key, title).
+    pub custom_templates: Vec<(String, String)>,
     pub error: Option<String>,
     /// The error is about the microphone permission: offer a shortcut to the macOS settings.
     pub mic_help: bool,
@@ -303,6 +309,7 @@ impl NcApp {
             model_label: model.label.to_string(),
             model_mb: model.size_mb,
             template: self.prefs.meeting.template.clone(),
+            custom_templates: self.ws.as_ref().map(crate::app::note_templates).unwrap_or_default(),
             error: m.error.clone(),
             mic_help: m.mic_help,
             audio_help: m.audio_help,
@@ -371,6 +378,23 @@ impl NcApp {
                 });
             }
             MeetingAction::SetTemplate(t) => self.prefs.meeting.template = t,
+            MeetingAction::ManageTemplates => {
+                self.ensure_templates();
+                if let Some(id) = self.ws.as_ref().and_then(crate::app::notes_group) {
+                    self.navigate(Target::Doc(notecraft_core::DocId::Page(id)));
+                }
+            }
+            MeetingAction::ResetSettings => {
+                self.prefs.meeting = MeetingPrefs::default();
+                self.meeting.error = None;
+                self.meeting.silent_device = None;
+                self.meeting.mic_help = false;
+                self.meeting.audio_help = false;
+                // models installed in the meantime, and microphones plugged in, are found again
+                self.ai.models_error = None;
+                self.refresh_models();
+                self.meeting.mics_checked = None;
+            }
             MeetingAction::SetMicrophone(m) => self.prefs.meeting.microphone = m,
             MeetingAction::SetSource(s) => self.prefs.meeting.source = s,
             MeetingAction::SetLanguage(l) => self.prefs.meeting.language = l,
@@ -582,7 +606,20 @@ impl NcApp {
                 .unwrap_or_default();
             (t, now_label())
         };
-        let prompt = notecraft_ai::build_notes_prompt(&prefs.template, &prefs.custom, &title, &date, &transcript);
+        let (tpl, custom) = if prefs.template.starts_with("page:") {
+            match self.ws.as_ref().and_then(|ws| crate::app::note_template_text(ws, &prefs.template)) {
+                Some(t) => (
+                    "custom".to_string(),
+                    format!(
+                        "Write the notes following this template. Keep its headings and structure, fill each part from the transcript and leave out what was not said:\n\n{t}"
+                    ),
+                ),
+                None => ("summary".to_string(), String::new()),
+            }
+        } else {
+            (prefs.template.clone(), prefs.custom.clone())
+        };
+        let prompt = notecraft_ai::build_notes_prompt(&tpl, &custom, &title, &date, &transcript);
         let mut engine = self.prefs.ai.engine();
         if let Engine::Ollama { model, .. } = &mut engine {
             if model.trim().is_empty() {
