@@ -480,3 +480,58 @@ fn skipping_far_rows_keeps_the_page_height() {
     assert!(known > 100, "the heights were not recorded");
     assert!((full - skipping).abs() < 2.0, "page height {full} drawn in full, {skipping} with rows skipped");
 }
+
+#[test]
+fn picking_a_transcription_template_takes_one_click_each_time() {
+    use crate::meeting::MeetingAction;
+    use egui_kittest::kittest::Queryable;
+    type St = (EditorState, Vec<Block>, Vec<MeetingAction>, String);
+    let blocks = vec![Block::new(BlockKind::Meeting, "Weekly")];
+    let mut h = egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
+        |ui, (state, blocks, acts, current): &mut St| {
+            let pal = Palette::light();
+            let titles = HashMap::new();
+            let meeting = crate::meeting::View {
+                model_ready: true,
+                template: current.clone(),
+                custom_templates: vec![
+                    ("page:a".into(), "Alpha".into()),
+                    ("page:b".into(), "Beta".into()),
+                    ("page:c".into(), "Gamma".into()),
+                ],
+                ..Default::default()
+            };
+            let embed = |_: &mut Ui, _: u64, _: &str| {};
+            let env = Env {
+                pal: &pal,
+                lang: Lang::En,
+                root: Path::new("."),
+                titles: &titles,
+                key: "tpl",
+                meeting: &meeting,
+                db_titles: &[],
+                embed: &embed,
+            };
+            for a in state.show(ui, blocks, &env).actions {
+                if let Action::Meeting(m) = a {
+                    if let MeetingAction::SetTemplate(t) = &m {
+                        *current = t.clone();
+                    }
+                    acts.push(m);
+                }
+            }
+        },
+        (EditorState::default(), blocks, Vec::new(), "page:a".to_string()),
+    );
+    theme::install_fonts(&h.ctx);
+    h.run();
+    for (from, to, key) in [("Alpha", "Beta", "page:b"), ("Beta", "Gamma", "page:c"), ("Gamma", "Alpha", "page:a")] {
+        h.get_by_label(&format!("{from} \u{25be}")).click();
+        h.run();
+        h.run();
+        h.get_by_label(to).click();
+        h.run();
+        h.run();
+        assert_eq!(h.state().3, key, "one click on {to} must select it; actions: {:?}", h.state().2);
+    }
+}

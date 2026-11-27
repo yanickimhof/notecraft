@@ -429,3 +429,15 @@ fn the_link_graph_follows_mentions_and_ignores_trashed_pages() {
     let beta = names.iter().position(|n| *n == "Beta").unwrap();
     assert_eq!(g.degree[beta], 2);
 }
+
+#[test]
+fn pages_with_the_same_position_and_title_keep_a_stable_order() {
+    let (_dir, mut w) = ws();
+    let root = w.create_page(None, "Group").unwrap();
+    let mut ids: Vec<String> = (0..6).map(|_| w.create_page(Some(&root), "Same").unwrap()).collect();
+    ids.sort();
+    for _ in 0..20 {
+        let got: Vec<String> = w.children(Some(&root)).into_iter().map(|c| c.doc.id().to_string()).collect();
+        assert_eq!(got, ids, "the id breaks the tie, in the same order every time");
+    }
+}

@@ -413,7 +413,14 @@ impl Workspace {
         }
         let mut keyed: Vec<(f64, String, DocId)> =
             docs.into_iter().map(|d| (self.order_of(&d), self.title(&d).to_lowercase(), d)).collect();
-        keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.1.cmp(&b.1)));
+        // same position and same title (two copies of a template, say): the id decides, so the order never
+        // changes from one call to the next and a menu built from it does not shuffle under the pointer
+        keyed.sort_by(|a, b| {
+            a.0.partial_cmp(&b.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.1.cmp(&b.1))
+                .then_with(|| a.2.id().cmp(b.2.id()))
+        });
         keyed
             .into_iter()
             .map(|(_, _, d)| TreeItem {
