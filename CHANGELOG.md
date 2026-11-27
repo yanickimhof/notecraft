@@ -7,7 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 Merges the 0.5.x releases.
 
 ### Added
-- AI review of a page: Proofread, Proofread and clarify, Reorganise the notes. A draft is shown next to the original; nothing changes until you accept, and Command Z undoes it. Transcripts, databases, images and code are never sent to the AI.
+- AI proofreading of a page, with a short AI menu (Summarize, Improve, Proofread, Translate, Ask). A draft is shown next to the original; nothing changes until you accept, and Command Z undoes it. Transcripts, databases, images and code are never sent to the AI.
 - Network guard: one gatekeeper for every connection of the app, a network lockdown switch and an activity log. The local model stays on this Mac.
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish.
 - Send a page by email: the default mail app opens with the title, and the formatted page is ready to paste.

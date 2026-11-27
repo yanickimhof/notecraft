@@ -806,6 +806,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("ai_summarize", "Summarize", "Résumer"),
     ("ai_continue", "Continue writing", "Continuer l'écriture"),
     ("ai_improve", "Improve writing", "Améliorer le texte"),
+    ("ai_translate", "Translate to", "Traduire en"),
     ("ai_to_french", "Translate to French", "Traduire en français"),
     ("ai_to_english", "Translate to English", "Traduire en anglais"),
     ("ai_ask", "Ask about this page", "Poser une question sur cette page"),

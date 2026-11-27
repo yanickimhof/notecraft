@@ -843,20 +843,21 @@ impl NcApp {
                                 .min_size(Vec2::new(width, 28.0));
                             ui.add(b).clicked().then_some(a)
                         };
-                        for a in [
-                            AiAction::Summarize,
-                            AiAction::Continue,
-                            AiAction::Improve,
-                            AiAction::Proofread,
-                            AiAction::Clarify,
-                            AiAction::Restructure,
-                            AiAction::Translate("French".into()),
-                            AiAction::Translate("English".into()),
-                        ] {
+                        for a in [AiAction::Summarize, AiAction::Improve, AiAction::Proofread] {
                             if let Some(a) = item(ui, a) {
                                 action = Some(a);
                             }
                         }
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(tr(lang, "ai_translate")).size(14.0));
+                            for (label, language) in [("Français", "French"), ("English", "English")] {
+                                let b =
+                                    egui::Button::new(RichText::new(label).size(14.0)).min_size(Vec2::new(0.0, 28.0));
+                                if ui.add(b).clicked() {
+                                    action = Some(AiAction::Translate(language.into()));
+                                }
+                            }
+                        });
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
                             let r = ui.add(
