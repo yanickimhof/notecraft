@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.6.2 (2026-11-27)
+
+### Fixed
+- AI with Ollama and reasoning models (qwen3, deepseek-r1...): thinking is switched off, so answers no longer take minutes. The context window now fits the page instead of Ollama's 4096 token default, which silently cut long pages, and the model stays loaded 30 minutes. The wait for a local model is now up to 15 minutes instead of 2, so a cold start no longer times out.
+
 ## 0.6.1 (2026-11-27)
 
 ### Added

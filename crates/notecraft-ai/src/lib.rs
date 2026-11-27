@@ -533,9 +533,17 @@ pub fn pick_chat_model(installed: &[String]) -> Option<String> {
 
 /// The request body sent to Ollama's chat endpoint.
 pub fn ollama_body(model: &str, p: &Prompt) -> Value {
+    // Ollama reads only 4096 tokens unless told otherwise, which silently cuts long pages: size the
+    // window to the prompt (about 3 characters a token, plus room for the answer).
+    let chars = p.system.chars().count() + p.user.chars().count();
+    let num_ctx = (chars / 3 + 3072).clamp(8192, 32768);
     json!({
         "model": model,
         "stream": false,
+        // reasoning models (qwen3, deepseek-r1...) otherwise spend minutes "thinking" before answering
+        "think": false,
+        "keep_alive": "30m",
+        "options": {"num_ctx": num_ctx, "temperature": 0.3},
         "messages": [
             {"role": "system", "content": p.system},
             {"role": "user", "content": p.user}
@@ -613,6 +621,8 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
             }
             guard_local(url)?;
             let base = trim_url(url);
+            // a local model can be slow (cold start, long page): wait longer than for a cloud API
+            let t = if t.total >= Duration::from_secs(60) { Timeouts { total: t.total.max(Duration::from_secs(900)), ..t } } else { t };
             let mut resp = agent(t)
                 .post(format!("{base}/api/chat"))
                 .send_json(ollama_body(model, prompt))
@@ -812,6 +822,8 @@ mod tests {
         let body: Value = serde_json::from_str(req.split("\r\n\r\n").nth(1).unwrap()).unwrap();
         assert_eq!(body["model"], "llama3.2");
         assert_eq!(body["stream"], false);
+        assert_eq!(body["think"], false);
+        assert!(body["options"]["num_ctx"].as_u64().unwrap() >= 8192);
         assert!(body["messages"][1]["content"].as_str().unwrap().contains("book train"));
     }
 
