@@ -927,16 +927,18 @@ impl NcApp {
     }
 
     /// Start an email in the default mail application (Mail, Outlook...) with the page's title as the
-    /// subject; the formatted page is put on the clipboard, to paste into the message (⌘V).
+    /// subject and the page's text as the body (when short enough); the formatted page is also put on the
+    /// clipboard, to paste over it (⌘V).
     pub fn email_page(&mut self, doc: &DocId) {
         self.flush_save();
         let Some(ws) = &self.ws else { return };
         match import_export::email_parts(ws, doc) {
             Ok((subject, html, text)) => {
-                let copied = arboard::Clipboard::new().ok().is_some_and(|mut c| c.set_html(html, Some(text)).is_ok());
+                let copied =
+                    arboard::Clipboard::new().ok().is_some_and(|mut c| c.set_html(html, Some(text.clone())).is_ok());
                 #[cfg(target_os = "macos")]
                 let ok = std::process::Command::new("open")
-                    .arg(format!("mailto:?subject={}", percent_encode(&subject)))
+                    .arg(mailto_url(&subject, &text))
                     .status()
                     .is_ok_and(|s| s.success());
                 #[cfg(not(target_os = "macos"))]
@@ -1207,6 +1209,19 @@ pub fn title_map(ws: &Workspace) -> HashMap<String, (DocId, String)> {
         }
     }
     m
+}
+
+/// Longest page text (characters) put in the body of the `mailto:` link; mail applications refuse very long links.
+const MAILTO_BODY_MAX: usize = 6000;
+
+/// A `mailto:` link with the subject and, when short enough, the page's text as the body.
+fn mailto_url(subject: &str, text: &str) -> String {
+    let mut url = format!("mailto:?subject={}", percent_encode(subject));
+    if !text.trim().is_empty() && text.chars().count() <= MAILTO_BODY_MAX {
+        url.push_str("&body=");
+        url.push_str(&percent_encode(text.trim()));
+    }
+    url
 }
 
 /// Percent-encoding for a `mailto:` value.

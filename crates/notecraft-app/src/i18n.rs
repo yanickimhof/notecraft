@@ -85,7 +85,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("export_docx", "Export as Word", "Exporter en Word"),
     ("export_email", "Send by email…", "Envoyer par email…"),
     ("merge_speaker_into", "Merge into", "Fusionner avec"),
-    ("email_opened", "Message started. Paste the page with ⌘V.", "Message créé. Colle la page avec ⌘V."),
+    ("email_opened", "Message started. ⌘V pastes the formatted page.", "Message créé. ⌘V colle la page mise en forme."),
     ("email_copied", "Page copied. Paste it into a new email with ⌘V.", "Page copiée. Colle-la dans un nouvel e-mail avec ⌘V."),
     ("email_failed", "The page could not be copied.", "La page n'a pas pu être copiée."),
     ("workspace_too_broad", "Pick a dedicated folder, not your home, Desktop, Documents or Downloads.", "Choisissez un dossier dédié, pas votre dossier personnel, le Bureau, Documents ou Téléchargements."),
