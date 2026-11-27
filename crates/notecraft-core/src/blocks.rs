@@ -1091,6 +1091,12 @@ pub fn normalize_parsed(blocks: &mut [Block]) {
 pub fn from_markdown(body: &str) -> Vec<Block> {
     let mut b = parse_markdown(body);
     normalize_parsed(&mut b);
+    // pages stay in memory for the whole session: give back the room left over by parsing
+    b.shrink_to_fit();
+    for x in &mut b {
+        x.text.shrink_to_fit();
+        x.color.shrink_to_fit();
+    }
     b
 }
 
