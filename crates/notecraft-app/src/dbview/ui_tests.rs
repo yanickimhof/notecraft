@@ -180,3 +180,36 @@ fn people_toggle_like_a_multiple_choice_and_a_select_stays_single() {
         notecraft_core::database::PropValue::Select("Marianne".into())
     );
 }
+
+#[test]
+fn a_menu_stays_open_while_a_dropdown_inside_it_is_used() {
+    let mut h = Harness::builder().build_ui_state(
+        |ui, choice: &mut usize| {
+            let btn = ui.button("Menu");
+            crate::widgets::sticky_popup(&btn, Id::unique("t-menu"), 200.0, |ui| {
+                crate::widgets::name_combo(
+                    egui::ComboBox::from_id_salt("pick").selected_text(format!("choice {choice}")).show_ui(ui, |ui| {
+                        for n in 0..3 {
+                            if ui.selectable_label(*choice == n, format!("option {n}")).clicked() {
+                                *choice = n;
+                            }
+                        }
+                    }),
+                    "pick",
+                );
+            });
+        },
+        0usize,
+    );
+    h.run();
+    h.get_by_label("Menu").click();
+    h.run();
+    for n in [2usize, 1, 2] {
+        h.get_by_label("pick").click();
+        h.run();
+        h.get_by_label(&format!("option {n}")).click();
+        h.run();
+        assert_eq!(*h.state(), n, "the option is taken");
+        assert!(h.query_by_label("pick").is_some(), "the menu is still open after choosing");
+    }
+}

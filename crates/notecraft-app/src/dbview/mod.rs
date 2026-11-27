@@ -507,20 +507,16 @@ impl DbUi {
         let label = if n > 0 { format!("{} · {n}", tr(lang, "filter")) } else { tr(lang, "filter").to_string() };
         let color = if n > 0 { pal.accent } else { pal.text_secondary };
         let btn = ui.add(egui::Button::new(RichText::new(label).size(13.5).color(color)));
-        egui::Popup::menu(&btn)
-            .id(Id::unique(("filter-menu", &view.id)))
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show(|ui| {
-                ui.set_min_width(440.0);
-                let props = ws.dbs[db].schema.properties.clone();
-                let mut v = view.clone();
-                let mut changed = false;
-                filter_group_ui(ui, &mut v.filter, &props, lang, "f", 0, &mut changed);
-                if changed {
-                    let filter = v.filter.clone();
-                    edit_view(ws, db, &view.id, actions, |vv| vv.filter = filter);
-                }
-            });
+        crate::widgets::sticky_popup(&btn, Id::unique(("filter-menu", &view.id)), 440.0, |ui| {
+            let props = ws.dbs[db].schema.properties.clone();
+            let mut v = view.clone();
+            let mut changed = false;
+            filter_group_ui(ui, &mut v.filter, &props, lang, "f", 0, &mut changed);
+            if changed {
+                let filter = v.filter.clone();
+                edit_view(ws, db, &view.id, actions, |vv| vv.filter = filter);
+            }
+        });
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -538,68 +534,64 @@ impl DbUi {
         let label = if n > 0 { format!("{} · {n}", tr(lang, "sort")) } else { tr(lang, "sort").to_string() };
         let color = if n > 0 { pal.accent } else { pal.text_secondary };
         let btn = ui.add(egui::Button::new(RichText::new(label).size(13.5).color(color)));
-        egui::Popup::menu(&btn)
-            .id(Id::unique(("sort-menu", &view.id)))
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show(|ui| {
-                ui.set_min_width(320.0);
-                let props = ws.dbs[db].schema.properties.clone();
-                let mut sorts = view.sorts.clone();
-                let mut changed = false;
-                let mut remove = None;
-                for (k, s) in sorts.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        let pname = props.iter().find(|p| p.id == s.prop).map(|p| p.name.clone()).unwrap_or_default();
-                        crate::widgets::name_combo(
-                            egui::ComboBox::from_id_salt(("sort-prop", k)).selected_text(pname).width(140.0).show_ui(
-                                ui,
-                                |ui| {
-                                    for p in &props {
-                                        if ui.selectable_label(p.id == s.prop, &p.name).clicked() {
-                                            s.prop = p.id.clone();
-                                            changed = true;
-                                        }
-                                    }
-                                },
-                            ),
-                            tr(lang, "combo_property"),
-                        );
-                        let dir = if s.descending { tr(lang, "descending") } else { tr(lang, "ascending") };
-                        crate::widgets::name_combo(
-                            egui::ComboBox::from_id_salt(("sort-dir", k)).selected_text(dir).width(110.0).show_ui(
-                                ui,
-                                |ui| {
-                                    if ui.selectable_label(!s.descending, tr(lang, "ascending")).clicked() {
-                                        s.descending = false;
+        crate::widgets::sticky_popup(&btn, Id::unique(("sort-menu", &view.id)), 320.0, |ui| {
+            let props = ws.dbs[db].schema.properties.clone();
+            let mut sorts = view.sorts.clone();
+            let mut changed = false;
+            let mut remove = None;
+            for (k, s) in sorts.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    let pname = props.iter().find(|p| p.id == s.prop).map(|p| p.name.clone()).unwrap_or_default();
+                    crate::widgets::name_combo(
+                        egui::ComboBox::from_id_salt(("sort-prop", k)).selected_text(pname).width(140.0).show_ui(
+                            ui,
+                            |ui| {
+                                for p in &props {
+                                    if ui.selectable_label(p.id == s.prop, &p.name).clicked() {
+                                        s.prop = p.id.clone();
                                         changed = true;
                                     }
-                                    if ui.selectable_label(s.descending, tr(lang, "descending")).clicked() {
-                                        s.descending = true;
-                                        changed = true;
-                                    }
-                                },
-                            ),
-                            tr(lang, "combo_sort_dir"),
-                        );
-                        if crate::widgets::icon_button(ui, "×", tr(lang, "remove")).clicked() {
-                            remove = Some(k);
-                        }
-                    });
-                }
-                if let Some(k) = remove {
-                    sorts.remove(k);
+                                }
+                            },
+                        ),
+                        tr(lang, "combo_property"),
+                    );
+                    let dir = if s.descending { tr(lang, "descending") } else { tr(lang, "ascending") };
+                    crate::widgets::name_combo(
+                        egui::ComboBox::from_id_salt(("sort-dir", k)).selected_text(dir).width(110.0).show_ui(
+                            ui,
+                            |ui| {
+                                if ui.selectable_label(!s.descending, tr(lang, "ascending")).clicked() {
+                                    s.descending = false;
+                                    changed = true;
+                                }
+                                if ui.selectable_label(s.descending, tr(lang, "descending")).clicked() {
+                                    s.descending = true;
+                                    changed = true;
+                                }
+                            },
+                        ),
+                        tr(lang, "combo_sort_dir"),
+                    );
+                    if crate::widgets::icon_button(ui, "×", tr(lang, "remove")).clicked() {
+                        remove = Some(k);
+                    }
+                });
+            }
+            if let Some(k) = remove {
+                sorts.remove(k);
+                changed = true;
+            }
+            if ui.button(format!("+  {}", tr(lang, "add_sort"))).clicked() {
+                if let Some(p) = props.iter().find(|p| !sorts.iter().any(|s| s.prop == p.id)) {
+                    sorts.push(Sort { prop: p.id.clone(), descending: false });
                     changed = true;
                 }
-                if ui.button(format!("+  {}", tr(lang, "add_sort"))).clicked() {
-                    if let Some(p) = props.iter().find(|p| !sorts.iter().any(|s| s.prop == p.id)) {
-                        sorts.push(Sort { prop: p.id.clone(), descending: false });
-                        changed = true;
-                    }
-                }
-                if changed {
-                    edit_view(ws, db, &view.id, actions, |vv| vv.sorts = sorts.clone());
-                }
-            });
+            }
+            if changed {
+                edit_view(ws, db, &view.id, actions, |vv| vv.sorts = sorts.clone());
+            }
+        });
     }
 
     #[allow(clippy::too_many_arguments)]

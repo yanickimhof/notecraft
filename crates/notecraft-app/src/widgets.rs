@@ -1,7 +1,7 @@
 //! Small reusable widgets: emoji picker, option chips, subtle buttons.
 
 use crate::theme::{Palette, EMOJI};
-use eframe::egui::{self, Color32, CornerRadius, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, CornerRadius, Id, RichText, Sense, Stroke, Ui, Vec2};
 
 /// A flat button that only shows a background when hovered.
 pub fn subtle_button(ui: &mut Ui, text: impl Into<egui::WidgetText>, pal: &Palette) -> egui::Response {
@@ -82,6 +82,36 @@ pub fn name_combo<R>(r: egui::InnerResponse<Option<R>>, label: &str) -> egui::In
     let enabled = r.response.enabled();
     r.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, enabled, label));
     r
+}
+
+/// A menu popup anchored to `btn` that stays open while a dropdown (`ComboBox`) inside it is used.
+///
+/// egui keeps a single open popup per window, so opening a dropdown inside a plain menu closes the menu.
+/// Here the open state is ours, and a click closes the menu only when it lands outside every popup.
+pub fn sticky_popup(btn: &egui::Response, id: Id, min_width: f32, content: impl FnOnce(&mut Ui)) {
+    let ctx = btn.ctx.clone();
+    let mut open = ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+    if btn.clicked() {
+        open = !open;
+    }
+    if open {
+        egui::Popup::menu(btn).id(id).open_bool(&mut open).close_behavior(egui::PopupCloseBehavior::IgnoreClicks).show(
+            |ui| {
+                ui.set_min_width(min_width);
+                content(ui);
+            },
+        );
+        if open && !btn.clicked() && ctx.input(|i| i.pointer.any_click()) {
+            let outside = ctx
+                .input(|i| i.pointer.interact_pos())
+                .and_then(|p| ctx.layer_id_at(p))
+                .is_none_or(|l| l.order != egui::Order::Foreground);
+            if outside {
+                open = false;
+            }
+        }
+    }
+    ctx.data_mut(|d| d.insert_temp(id, open));
 }
 
 /// Give an icon-only control a name screen readers (VoiceOver) can say.
