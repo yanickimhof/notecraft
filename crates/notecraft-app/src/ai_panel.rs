@@ -147,6 +147,11 @@ pub struct Draft {
     pub action: AiAction,
     pub text: String,
     pub ctx: AiContext,
+    /// Whole-page review: the page as it will be after accepting, and the Markdown it was made from.
+    pub review: Option<(Vec<Block>, String)>,
+    /// The page Markdown as sent (kept elements shown as a note), for the "original" view.
+    pub original: String,
+    pub warning: Option<String>,
 }
 
 /// A request in flight: what was asked, where the answer will arrive, and when it started.
@@ -170,6 +175,10 @@ pub struct AiState {
     pub ctx: Option<AiContext>,
     pub running: Option<RunningAi>,
     pub draft: Option<Draft>,
+    /// Review in flight: the elements left out of the request, and the Markdown sent.
+    pub review_kept: Vec<Vec<Block>>,
+    pub review_md: String,
+    pub show_original: bool,
     pub error: Option<String>,
     /// Installed Ollama models (listed, never downloaded).
     pub models: Vec<String>,
@@ -421,7 +430,31 @@ impl NcApp {
             }
         };
         let page = NcApp::blocks_mut(ws, &ctx.target).map(|b| blocks::to_markdown(b)).unwrap_or_default();
-        let prompt = build_prompt(&action, &title, &page, ctx.selection.as_ref().map(|s| s.3.as_str()));
+        let whole_review = action.is_review() && ctx.selection.is_none();
+        let mut prompts: Vec<notecraft_ai::Prompt> = Vec::new();
+        if whole_review {
+            let prepared = NcApp::blocks_mut(ws, &ctx.target).map(|b| crate::ai_review::prepare(b));
+            let Some(prep) = prepared else { return };
+            if prep.markdown.chars().count() > notecraft_ai::MAX_CHARS {
+                self.ai.error = Some(tr(self.prefs.lang, "ai_review_too_long").to_string());
+                return;
+            }
+            // proofreading goes piece by piece (small models lose text on long inputs); restructuring needs the whole page
+            let pieces = if action == AiAction::Restructure {
+                vec![prep.markdown.clone()]
+            } else {
+                crate::ai_review::chunks(&prep.markdown, 5000)
+            };
+            for piece in &pieces {
+                prompts.push(build_prompt(&action, &title, piece, None));
+            }
+            self.ai.review_md = prep.markdown;
+            self.ai.review_kept = prep.kept;
+        } else {
+            prompts.push(build_prompt(&action, &title, &page, ctx.selection.as_ref().map(|s| s.3.as_str())));
+            self.ai.review_md.clear();
+            self.ai.review_kept.clear();
+        }
         let mut engine = self.prefs.ai.engine();
         let installed = self.ai.models.clone();
         let (tx, rx) = channel();
@@ -443,7 +476,17 @@ impl NcApp {
                     }
                 }
             }
-            let _ = tx.send(notecraft_ai::complete_with_retry(&engine, &prompt, Timeouts::default()));
+            let mut parts: Vec<String> = Vec::new();
+            for prompt in &prompts {
+                match notecraft_ai::complete_with_retry(&engine, prompt, Timeouts::default()) {
+                    Ok(t) => parts.push(t.trim().to_string()),
+                    Err(e) => {
+                        let _ = tx.send(Err(e));
+                        return;
+                    }
+                }
+            }
+            let _ = tx.send(Ok(parts.join("\n\n")));
         });
         self.ai.error = None;
         self.ai.draft = None;
@@ -536,7 +579,29 @@ impl NcApp {
                 let c = self.ai.ctx.clone();
                 self.ai.running = None;
                 if let Some(c) = c {
-                    self.ai.draft = Some(Draft { action, text, ctx: c });
+                    let mut draft = Draft { action: action.clone(), text, ctx: c, review: None, original: String::new(), warning: None };
+                    if action.is_review() && !self.ai.review_md.is_empty() {
+                        let lang = self.prefs.lang;
+                        let kept = std::mem::take(&mut self.ai.review_kept);
+                        let md = self.ai.review_md.clone();
+                        let old = self.ws.as_mut().and_then(|ws| NcApp::blocks_mut(ws, &draft.ctx.target).map(|b| b.clone()));
+                        match old.and_then(|o| crate::ai_review::restore(&o, &kept, &draft.text)) {
+                            Some(new) => {
+                                if crate::ai_review::numbers(&md) != crate::ai_review::numbers(&draft.text) {
+                                    draft.warning = Some(tr(lang, "ai_numbers_differ").to_string());
+                                }
+                                draft.original = crate::ai_review::readable(&md, kept.len());
+                                draft.text = crate::ai_review::readable(&draft.text, kept.len());
+                                draft.review = Some((new, md));
+                            }
+                            None => {
+                                self.ai.error = Some(tr(lang, "ai_review_lost").to_string());
+                                return;
+                            }
+                        }
+                        self.ai.show_original = false;
+                    }
+                    self.ai.draft = Some(draft);
                 }
             }
             Ok(Err(e)) => {
@@ -558,9 +623,26 @@ impl NcApp {
     fn accept_draft(&mut self, replace: bool) {
         let Some(d) = self.ai.draft.take() else { return };
         let key = d.ctx.target.key();
+        let lang = self.prefs.lang;
         let Some(ws) = self.ws.as_mut() else { return };
         let Some(blocks) = NcApp::blocks_mut(ws, &d.ctx.target) else { return };
         let before = blocks.clone();
+        if let Some((new, sent)) = d.review {
+            // the page must be the one the AI worked on
+            if crate::ai_review::prepare(blocks).markdown != sent {
+                self.ai.error = Some(tr(lang, "ai_review_changed").to_string());
+                return;
+            }
+            *blocks = new;
+            self.editor.record(&key, &before, None);
+            if self.current.as_ref() == Some(&d.ctx.target) {
+                self.mark_dirty();
+            } else if let Target::Doc(doc) = &d.ctx.target {
+                let _ = ws.save(doc);
+            }
+            self.ai.open = false;
+            return;
+        }
         let mut new = blocks::from_markdown(&d.text);
         if new.is_empty() {
             return;
@@ -672,15 +754,28 @@ impl NcApp {
                                 .show(ui, |ui| {
                                     ui.set_width(width - 20.0);
                                     egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                                        draft_view(ui, &pal, &d.text, width - 40.0);
+                                        let shown = if self.ai.show_original && !d.original.is_empty() { &d.original } else { &d.text };
+                                        draft_view(ui, &pal, shown, width - 40.0);
                                     });
                                 });
+                            if let Some(w) = &d.warning {
+                                ui.add_space(4.0);
+                                ui.label(RichText::new(w).size(12.5).color(pal.danger));
+                            }
                             ui.add_space(6.0);
                             ui.horizontal(|ui| {
                                 let primary = |t: &str| {
                                     egui::Button::new(RichText::new(t).color(Color32::WHITE)).fill(pal.accent)
                                 };
-                                if d.ctx.selection.is_some() && d.action.replaces() {
+                                if d.review.is_some() {
+                                    if ui.add(primary(tr(lang, "ai_replace_page"))).clicked() {
+                                        accept = Some(true);
+                                    }
+                                    let label = if self.ai.show_original { "ai_show_draft" } else { "ai_show_original" };
+                                    if ui.button(tr(lang, label)).clicked() {
+                                        self.ai.show_original = !self.ai.show_original;
+                                    }
+                                } else if d.ctx.selection.is_some() && d.action.replaces() {
                                     if ui.add(primary(tr(lang, "ai_replace"))).clicked() {
                                         accept = Some(true);
                                     }
@@ -739,6 +834,9 @@ impl NcApp {
                             AiAction::Summarize,
                             AiAction::Continue,
                             AiAction::Improve,
+                            AiAction::Proofread,
+                            AiAction::Clarify,
+                            AiAction::Restructure,
                             AiAction::Translate("French".into()),
                             AiAction::Translate("English".into()),
                         ] {

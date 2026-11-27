@@ -15,7 +15,7 @@ pub mod prompts;
 pub mod publish;
 pub mod webpage;
 
-pub use prompts::{build_notes_prompt, build_prompt, note_structure_text, AiAction, Prompt, NOTE_TEMPLATES};
+pub use prompts::{build_notes_prompt, build_prompt, note_structure_text, AiAction, Prompt, MAX_CHARS, NOTE_TEMPLATES};
 
 use serde_json::{json, Value};
 use std::time::Duration;

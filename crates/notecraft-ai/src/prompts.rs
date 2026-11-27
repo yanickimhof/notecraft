@@ -9,6 +9,12 @@ pub enum AiAction {
     /// Target language, e.g. "French" or "English".
     Translate(String),
     Ask(String),
+    /// Fix spelling, grammar and punctuation; change nothing else.
+    Proofread,
+    /// Proofread, and rewrite clumsy sentences.
+    Clarify,
+    /// Proofread, then regroup loose notes under headings, lists and a summary.
+    Restructure,
     /// Solve the equation in the selection step by step; the language to write in, e.g. "French".
     Solve(String),
 }
@@ -24,12 +30,20 @@ impl AiAction {
             AiAction::Translate(_) => "ai_to_english",
             AiAction::Ask(_) => "ai_ask",
             AiAction::Solve(_) => "ai_solve",
+            AiAction::Proofread => "ai_proofread",
+            AiAction::Clarify => "ai_clarify",
+            AiAction::Restructure => "ai_restructure",
         }
+    }
+
+    /// The three review actions: on a whole page they replace it (kept elements stay as they are).
+    pub fn is_review(&self) -> bool {
+        matches!(self, AiAction::Proofread | AiAction::Clarify | AiAction::Restructure)
     }
 
     /// True when the answer replaces the selection rather than being added after it.
     pub fn replaces(&self) -> bool {
-        matches!(self, AiAction::Improve | AiAction::Translate(_))
+        matches!(self, AiAction::Improve | AiAction::Translate(_)) || self.is_review()
     }
 }
 
@@ -54,6 +68,8 @@ fn clip(s: &str) -> String {
     }
 }
 
+const KEEP_RULE: &str = "Lines made only of a marker like @@KEEP3@@ stand for elements you cannot see: copy each one exactly, once, on its own line, in a place that fits.";
+
 /// Build the prompt for an action on a page (or on a selection inside it).
 pub fn build_prompt(action: &AiAction, title: &str, page_markdown: &str, selection: Option<&str>) -> Prompt {
     let page = clip(page_markdown);
@@ -67,6 +83,9 @@ pub fn build_prompt(action: &AiAction, title: &str, page_markdown: &str, selecti
         AiAction::Summarize => format!("Summarize {what} in a few short bullet points, in the same language as the text."),
         AiAction::Continue => format!("Continue writing after the end of {what}, in the same language, tone and style. Write one to three paragraphs and return only the new text."),
         AiAction::Improve => format!("Rewrite {what} so it is clearer and reads better. Keep the meaning, the language and the Markdown structure. Return only the rewritten text."),
+        AiAction::Proofread => format!("Correct the spelling, grammar, agreement, punctuation, capitalisation and typography of {what}. Change nothing else: keep every word choice, the tone, the order, the meaning, the language and the Markdown structure (headings, lists, tables, links, [[links]], bold, colours and other tags). Never touch numbers, names, dates, amounts or URLs. {KEEP_RULE} Return the whole text."),
+        AiAction::Clarify => format!("Correct {what} and rewrite clumsy, heavy or unclear sentences so it reads well. Keep the meaning, the facts, the language, the tone, the order and the Markdown structure (tables, links, [[links]], tags). Never add or remove information; never touch numbers, names, dates, amounts or URLs. {KEEP_RULE} Return the whole text."),
+        AiAction::Restructure => format!("Reorganise {what}, which is made of loose notes. Correct spelling and grammar, group related notes under clear headings (## and ###), turn runs of related short lines into bullet lists, keep chronological items in order, put a short ## Summary first when the text is longer than a few lines, and collect tasks and decisions in ## Action items (- [ ] Task, owner, date when stated) and ## Decisions. Keep every fact, number, name, date and link exactly; never invent anything; do not drop anything. Keep tables as Markdown tables (you may fix their cells). Keep the language of the text. {KEEP_RULE} Return the whole page."),
         AiAction::Translate(lang) => format!("Translate {what} into {lang}. Keep the Markdown structure, names and [[links]] as they are. Return only the translation."),
         AiAction::Solve(lang) => format!(
             "Solve the equation or exercise in {what} step by step, as a teacher helping a student. Write in {lang}. Put each step as one short sentence in its own paragraph, followed by the formula on its own lines between $$ and $$ (one formula per block). Use only this LaTeX: \\frac{{a}}{{b}}, \\sqrt{{x}}, ^, _, \\pm, \\cdot, \\times, \\leq, \\geq, \\neq, \\approx, \\infty, \\sum, \\prod, \\int, Greek letters, \\to, \\Rightarrow. Never use \\begin, \\text, \\left, \\right, align or matrices. End with the final answer and, when possible, a check by substitution. Be exact: if it cannot be solved, say why."

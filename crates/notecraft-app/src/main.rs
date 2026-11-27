@@ -6,6 +6,7 @@
 //! 120 frames, saves the window as a PNG and exits (used for automated checks).
 
 mod ai_panel;
+mod ai_review;
 mod app;
 mod backups;
 mod dbview;
@@ -13,6 +14,8 @@ mod demo;
 mod disk;
 mod editor;
 mod finder;
+mod flags;
+mod flags_data;
 mod graph_view;
 mod i18n;
 mod icons;

@@ -618,3 +618,25 @@ fn a_cell_fill_is_kept_in_the_text_and_hidden() {
     let back = notecraft_core::blocks::table_cells(&text);
     assert_eq!(notecraft_core::inline::split_fill(&back[1][1]), (Some("yellow"), "d"));
 }
+
+#[test]
+fn shift_arrow_extends_the_selection_by_a_letter() {
+    let a = Block::new(BlockKind::Paragraph, "abcdef");
+    let aid = a.id;
+    let mut h = editor_harness(vec![a]);
+    h.state_mut().0.focus = Some((aid, Caret::At(2)));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(key_event(Key::ArrowRight, egui::Modifiers::SHIFT));
+    h.event(key_event(Key::ArrowRight, egui::Modifiers::SHIFT));
+    for _ in 0..3 {
+        h.run();
+    }
+    // typing replaces the selected letters "cd"
+    h.event(egui::Event::Text("X".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    assert_eq!(h.state().1[0].text, "abXef");
+}

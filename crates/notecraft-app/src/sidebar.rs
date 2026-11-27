@@ -342,7 +342,12 @@ impl NcApp {
                 pal.text_secondary,
             );
         } else {
-            ui.painter().text(arrow.center(), Align2::CENTER_CENTER, icon, FontId::proportional(14.0), pal.text);
+            match crate::flags::code_of(&icon) {
+                Some(code) if crate::flags::paint(ui, egui::Rect::from_center_size(arrow.center(), Vec2::new(18.0, 14.0)), code) => {}
+                _ => {
+                    ui.painter().text(arrow.center(), Align2::CENTER_CENTER, icon, FontId::proportional(14.0), pal.text);
+                }
+            }
         }
         if ar.clicked() {
             if expanded {

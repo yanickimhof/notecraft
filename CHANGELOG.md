@@ -2,6 +2,16 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
+## 0.6.1 (2026-11-27)
+
+### Added
+- AI review of a page: in the AI panel, Proofread (spelling and grammar only), Proofread and clarify, and Reorganise the notes (headings, lists, summary, action items, tables kept). The AI works on the whole page, or on the selection when there is one, and shows a draft with a Show original switch. Nothing changes until you press Replace the page, and Command Z undoes it. Transcripts, databases, images, code, equations and the meeting block are never sent to the AI and come back untouched; a warning appears when figures or dates differ, and a review that loses an element is refused.
+- Flags of 255 countries and territories in the page icon picker, with a search box and the country name (English and French) on hover. Flag icons are drawn as pictures in the sidebar and the page header.
+
+### Fixed
+- Shift and the arrow keys extend the text selection again.
+- Apple colour emoji now show in colour in pages, titles and icons (typed with Control Command Space or pasted).
+
 ## 0.6.0 (2026-11-27)
 
 Merges the 0.5.x releases.

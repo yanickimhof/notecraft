@@ -282,7 +282,12 @@ impl EditorState {
             }
             return;
         }
-        let shift = ctx.input(|inp| inp.modifiers.shift);
+        let shift = ctx.input(|inp| {
+            inp.modifiers.shift
+                || inp.events.iter().any(|e| {
+                    matches!(e, egui::Event::Key { key: Key::ArrowLeft | Key::ArrowRight, pressed: true, modifiers, .. } if modifiers.shift)
+                })
+        });
         // ⌥← ⌥→: a word at a time over the visible text; hidden link targets and markers are skipped
         if plain && !no_alt && !shift && consume(Modifiers::ALT, Key::ArrowRight) {
             if visible_after {
@@ -306,7 +311,8 @@ impl EditorState {
             }
             return;
         }
-        if plain && no_alt && consume(Modifiers::NONE, Key::ArrowRight) {
+        // (`consume_key` also matches with Shift held, which would move the caret instead of extending the selection)
+        if plain && no_alt && !shift && consume(Modifiers::NONE, Key::ArrowRight) {
             if visible_after {
                 self.focus = Some((bid, Caret::At(inline::step_caret(&blocks[i].text, caret.0, true))));
             } else {
@@ -317,7 +323,7 @@ impl EditorState {
             }
             return;
         }
-        if plain && no_alt && consume(Modifiers::NONE, Key::ArrowLeft) {
+        if plain && no_alt && !shift && consume(Modifiers::NONE, Key::ArrowLeft) {
             if visible_before {
                 self.focus = Some((bid, Caret::At(inline::step_caret(&blocks[i].text, caret.0, false))));
             } else {

@@ -144,6 +144,37 @@ pub fn emoji_grid(ui: &mut Ui, pal: &Palette, remove_label: &str, allow_remove: 
             }
         }
     });
+    // every flag, with the country name on hover and a search box
+    ui.add_space(6.0);
+    let q_id = Id::unique("flag-search");
+    let mut q: String = ui.data(|d| d.get_temp(q_id)).unwrap_or_default();
+    ui.add(egui::TextEdit::singleline(&mut q).hint_text("🏳  Flags / Drapeaux").desired_width(8.0 * 34.0 - 4.0));
+    ui.data_mut(|d| d.insert_temp(q_id, q.clone()));
+    let needle = q.trim().to_lowercase();
+    egui::ScrollArea::vertical().max_height(190.0).id_salt("flag-scroll").show(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::splat(4.0);
+            for (code, en, frn, _) in crate::flags::FLAGS {
+                if !needle.is_empty()
+                    && !en.to_lowercase().contains(&needle)
+                    && !frn.to_lowercase().contains(&needle)
+                    && *code != needle
+                {
+                    continue;
+                }
+                let (rect, resp) = ui.allocate_exact_size(Vec2::new(30.0, 24.0), egui::Sense::click());
+                if resp.hovered() {
+                    ui.painter().rect_filled(rect.expand(2.0), CornerRadius::same(4), pal.hover);
+                }
+                crate::flags::paint(ui, rect, code);
+                let label = if en == frn { en.to_string() } else { format!("{en} · {frn}") };
+                let resp = resp.on_hover_text(label);
+                if resp.clicked() {
+                    picked = Some(crate::flags::emoji_of(code));
+                }
+            }
+        });
+    });
     picked
 }
 

@@ -338,6 +338,17 @@ pub fn install_fonts(ctx: &egui::Context) {
         fonts.font_data.insert("system-mono".into(), Arc::new(FontData::from_owned(bytes)));
         fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "system-mono".into());
     }
+    // Apple's colour emoji (typed with Control Command Space, pasted, or in a page title) come before the
+    // monochrome fallback; the file is mapped, not read, because it is over a hundred megabytes
+    #[cfg(target_os = "macos")]
+    if let Some(data) = apple_emoji_font() {
+        fonts.font_data.insert("apple-emoji".into(), Arc::new(data));
+        for fam in [FontFamily::Proportional, FontFamily::Monospace] {
+            let list = fonts.families.entry(fam).or_default();
+            let at = usize::from(!list.is_empty()).min(list.len());
+            list.insert(at, "apple-emoji".into());
+        }
+    }
     // the serif family falls back on the regular fonts (emoji, missing glyphs)
     let mut serif: Vec<String> = Vec::new();
     if let Some(bytes) = serif_candidates().into_iter().find_map(|p| std::fs::read(&p).ok()) {
@@ -347,6 +358,16 @@ pub fn install_fonts(ctx: &egui::Context) {
     serif.extend(fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default());
     fonts.families.insert(FontFamily::Name("serif".into()), serif);
     ctx.set_fonts(fonts);
+}
+
+/// Apple Color Emoji, mapped from the system. `None` when the file is not there.
+#[cfg(target_os = "macos")]
+fn apple_emoji_font() -> Option<FontData> {
+    let file = std::fs::File::open("/System/Library/Fonts/Apple Color Emoji.ttc").ok()?;
+    // SAFETY: a read-only map of a system font file that stays in place for the life of the process
+    let map = unsafe { memmap2::Mmap::map(&file) }.ok()?;
+    let map: &'static memmap2::Mmap = Box::leak(Box::new(map));
+    Some(FontData::from_static(&map[..]))
 }
 
 /// Variation coordinates for a font weight (400 regular, 600 semibold, 700 bold).
@@ -469,5 +490,36 @@ mod tests {
         let (bg, _, dot) = Palette::dark().option_tokens("green");
         assert_eq!(bg, Color32::from_rgb(55, 103, 76));
         assert_eq!(dot, Color32::from_rgb(70, 161, 113));
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod emoji_tests {
+    use super::*;
+
+    /// A colour emoji must come out of the font atlas with colour, not as a grey outline.
+    #[test]
+    fn apple_emoji_are_drawn_in_colour() {
+        if !std::path::Path::new("/System/Library/Fonts/Apple Color Emoji.ttc").exists() {
+            return;
+        }
+        let ctx = egui::Context::default();
+        if std::env::var_os("NC_NO_APPLE_EMOJI").is_none() {
+            install_fonts(&ctx);
+        }
+        let mut coloured = false;
+        for _ in 0..3 {
+            let mut out = ctx.run_ui(Default::default(), |ui| {
+                ui.label(egui::RichText::new("😀 🎉 ❤ 🇨🇭 👍🏽").size(32.0));
+            });
+            for deltas in out.textures_delta.set.values() {
+                for delta in deltas {
+                    let egui::ImageData::Color(img) = &delta.image;
+                    coloured |= img.pixels.iter().any(|p| p.a() > 200 && (p.r() != p.g() || p.g() != p.b()));
+                }
+            }
+            out.textures_delta.clear();
+        }
+        assert!(coloured, "no coloured pixel in the font atlas: the emoji are not drawn in colour");
     }
 }
