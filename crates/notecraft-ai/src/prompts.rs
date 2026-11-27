@@ -36,9 +36,9 @@ impl AiAction {
         }
     }
 
-    /// The three review actions: on a whole page they replace it (kept elements stay as they are).
+    /// The review actions: on a whole page they replace it (kept elements stay as they are).
     pub fn is_review(&self) -> bool {
-        matches!(self, AiAction::Proofread | AiAction::Clarify | AiAction::Restructure)
+        matches!(self, AiAction::Improve | AiAction::Proofread | AiAction::Clarify | AiAction::Restructure)
     }
 
     /// True when the answer replaces the selection rather than being added after it.
@@ -82,7 +82,7 @@ pub fn build_prompt(action: &AiAction, title: &str, page_markdown: &str, selecti
     let task = match action {
         AiAction::Summarize => format!("Summarize {what} in a few short bullet points, in the same language as the text."),
         AiAction::Continue => format!("Continue writing after the end of {what}, in the same language, tone and style. Write one to three paragraphs and return only the new text."),
-        AiAction::Improve => format!("Rewrite {what} so it is clearer and reads better. Keep the meaning, the language and the Markdown structure. Return only the rewritten text."),
+        AiAction::Improve => format!("Rewrite {what} so it is clearer and reads better. Keep the meaning, the facts, the language, the order and the Markdown structure (tables, links, [[links]], tags). Never touch numbers, names, dates, amounts or URLs. {KEEP_RULE} Return the whole text."),
         AiAction::Proofread => format!("Correct the spelling, grammar, agreement, punctuation, capitalisation and typography of {what}. Change nothing else: keep every word choice, the tone, the order, the meaning, the language and the Markdown structure (headings, lists, tables, links, [[links]], bold, colours and other tags). Never touch numbers, names, dates, amounts or URLs. {KEEP_RULE} Return the whole text."),
         AiAction::Clarify => format!("Correct {what} and rewrite clumsy, heavy or unclear sentences so it reads well. Keep the meaning, the facts, the language, the tone, the order and the Markdown structure (tables, links, [[links]], tags). Never add or remove information; never touch numbers, names, dates, amounts or URLs. {KEEP_RULE} Return the whole text."),
         AiAction::Restructure => format!("Reorganise {what}, which is made of loose notes. Correct spelling and grammar, group related notes under clear headings (## and ###), turn runs of related short lines into bullet lists, keep chronological items in order, put a short ## Summary first when the text is longer than a few lines, and collect tasks and decisions in ## Action items (- [ ] Task, owner, date when stated) and ## Decisions. Keep every fact, number, name, date and link exactly; never invent anything; do not drop anything. Keep tables as Markdown tables (you may fix their cells). Keep the language of the text. {KEEP_RULE} Return the whole page."),
