@@ -7,7 +7,7 @@
 //! * model downloads only go to Hugging Face, publishing only to Cloudflare, cloud AI only when not locked;
 //! * link previews never reach a private network address (a pasted link must not probe the local network).
 //!
-//! Redirects are followed by the HTTP client: only the first address is checked here.
+//! Redirects are followed by the callers themselves, which check each address again.
 
 use std::collections::VecDeque;
 use std::net::IpAddr;
@@ -112,12 +112,40 @@ pub fn is_private_host(host: &str) -> bool {
         return true;
     }
     match host.parse::<IpAddr>() {
-        Ok(IpAddr::V4(ip)) => ip.is_private() || ip.is_link_local() || ip.is_unspecified() || ip.is_broadcast(),
-        Ok(IpAddr::V6(ip)) => {
-            let s = ip.segments();
-            ip.is_unspecified() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80
-        }
+        Ok(IpAddr::V4(ip)) => is_private_ip(IpAddr::V4(ip)),
+        Ok(IpAddr::V6(ip)) => is_private_ip(IpAddr::V6(ip)),
         Err(_) => !host.contains('.'),
+    }
+}
+
+/// True for an address of this Mac or of a private network, including an IPv4 address written as IPv6.
+pub fn is_private_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            // 100.64.0.0/10 is left out on purpose: corporate proxies such as Zscaler answer from it
+            ip.is_loopback() || ip.is_private() || ip.is_link_local() || ip.is_unspecified() || ip.is_broadcast()
+        }
+        IpAddr::V6(ip) => {
+            if let Some(v4) = ip.to_ipv4_mapped() {
+                return is_private_ip(IpAddr::V4(v4));
+            }
+            let s = ip.segments();
+            ip.is_loopback() || ip.is_unspecified() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+/// True when the host of `url` resolves to this Mac or a private network, whatever way its address is
+/// written. A name that cannot be resolved counts as private (nothing to fetch anyway).
+pub fn resolves_privately(url: &str) -> bool {
+    use std::net::ToSocketAddrs;
+    let host = host_of(url);
+    if host.is_empty() {
+        return true;
+    }
+    match (host.as_str(), 443).to_socket_addrs() {
+        Ok(mut addrs) => addrs.any(|a| is_private_ip(a.ip())),
+        Err(_) => true,
     }
 }
 
@@ -202,6 +230,17 @@ pub fn recent() -> Vec<Event> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mapped_and_odd_addresses_are_private() {
+        use std::net::IpAddr;
+        for a in ["::ffff:127.0.0.1", "::ffff:192.168.1.5", "::1", "10.0.0.1", "169.254.1.1"] {
+            assert!(is_private_ip(a.parse::<IpAddr>().unwrap()), "{a}");
+        }
+        for a in ["8.8.8.8", "100.64.1.1", "2606:4700::1111"] {
+            assert!(!is_private_ip(a.parse::<IpAddr>().unwrap()), "{a}");
+        }
+    }
+
     use super::*;
 
     // the switches are process-wide: tests that touch them run one after the other
