@@ -685,15 +685,14 @@ impl NcApp {
             ];
             cycle(ui, &pal, &mut self.prefs.meeting.engine, &opts, false);
         });
+        // show a template that exists, not a built-in key left over from before
+        self.prefs.meeting.template = self.effective_template();
         srow(ui, &pal, tr(lang, "meeting_template"), "", None, |ui| {
-            // the transcription templates are the pages of their group; the built-in ones only stand in until
-            // those pages exist
+            // the transcription templates are the pages of their group; when none is left the general summary
+            // keeps the block working
             let pages = self.ws.as_ref().map(crate::app::note_templates).unwrap_or_default();
             let mut opts: Vec<(String, Glyph, String)> = if pages.is_empty() {
-                notecraft_ai::NOTE_TEMPLATES
-                    .iter()
-                    .map(|k| ((*k).to_string(), Glyph::None, crate::meeting::template_label(lang, k).to_string()))
-                    .collect()
+                vec![("summary".to_string(), Glyph::None, crate::meeting::template_label(lang, "summary").to_string())]
             } else {
                 pages.into_iter().map(|(k, t)| (k, Glyph::None, t)).collect()
             };

@@ -129,15 +129,90 @@ pub fn note_template_text(ws: &Workspace, key: &str) -> Option<String> {
 fn minutes(fr: bool) -> (&'static str, &'static str) {
     if fr {
         (
-            "Compte rendu de réunion",
+            "Exemple : compte rendu de réunion",
             "## Compte rendu de réunion\n\n**Date :** {{date}}\n\n**Heure :** \n\n**Lieu ou lien :** \n\n**Animateur :** \n\n**Rédacteur :** \n\n### Participants\n\n- \n\n### Excusés\n\n- \n\n### Ordre du jour\n\n1. \n\n### Discussion\n\n- \n\n### Décisions\n\n- \n\n### Actions\n\n- [ ] Action (responsable, échéance)\n\n### Prochaine réunion\n\n- \n",
         )
     } else {
         (
-            "Meeting minutes",
+            "Example: meeting minutes",
             "## Meeting minutes\n\n**Date:** {{date}}\n\n**Time:** \n\n**Location or link:** \n\n**Facilitator:** \n\n**Note taker:** \n\n### Attendees\n\n- \n\n### Apologies\n\n- \n\n### Agenda\n\n1. \n\n### Discussion\n\n- \n\n### Decisions\n\n- \n\n### Actions\n\n- [ ] Action (owner, due date)\n\n### Next meeting\n\n- \n",
         )
     }
+}
+
+/// Title and explanation of the top level templates page.
+fn root_texts(fr: bool) -> (&'static str, &'static str) {
+    if fr {
+        (
+            "Modèles",
+            "Chaque sous-page de cette page est un modèle de page. Écrivez ou modifiez-la comme une page ordinaire, puis insérez-la où vous voulez avec / puis Modèle. {{date}} devient la date du jour. Les modèles de transcription (ce que l'IA suit pour rédiger une réunion enregistrée) sont dans la page « Modèles de transcription ».",
+        )
+    } else {
+        (
+            "Templates",
+            "Each sub-page of this page is a page template. Write or edit it like any page, then insert it anywhere with / then Template. {{date}} becomes today's date. Templates the AI follows to write up a recorded meeting are in the \"Transcription templates\" page.",
+        )
+    }
+}
+
+/// Title and text of the example transcription template.
+fn transcription_example(fr: bool) -> (&'static str, &'static str) {
+    let text = notecraft_ai::note_structure_text("summary");
+    if fr {
+        ("Exemple : résumé général", text)
+    } else {
+        ("Example: general summary", text)
+    }
+}
+
+/// Writes the example templates: one page template and one transcription template, nothing more. They go only
+/// into a section that is created now, so templates the person already has are never duplicated and what they
+/// delete does not come back. `first` is true on the very first run; `with_group` asks for the transcription
+/// section even later (it is then created empty). Returns the id of the transcription example, if one was written.
+fn seed(ws: &mut Workspace, fr: bool, first: bool, with_group: bool) -> notecraft_core::Result<Option<String>> {
+    let root = match templates_root(ws) {
+        Some(r) => r,
+        None => {
+            let (title, intro) = root_texts(fr);
+            let root = ws.create_page(None, title)?;
+            {
+                let p = ws.pages.get_mut(&root).unwrap();
+                p.meta.icon = "📋".into();
+                p.blocks = vec![Block::paragraph(intro)];
+            }
+            ws.save_page(&root)?;
+            if first {
+                let (name, md) = minutes(fr);
+                let sub = ws.create_page(Some(&root), name)?;
+                {
+                    let p = ws.pages.get_mut(&sub).unwrap();
+                    p.meta.icon = "📝".into();
+                    p.blocks = blocks::from_markdown(md);
+                }
+                ws.save_page(&sub)?;
+            }
+            root
+        }
+    };
+    let mut example = None;
+    if notes_group(ws).is_none() && (first || with_group) {
+        let (gtitle, gintro) = group_texts(fr);
+        let g = ws.create_page(Some(&root), gtitle)?;
+        {
+            let p = ws.pages.get_mut(&g).unwrap();
+            p.meta.icon = "🎙".into();
+            p.blocks = vec![Block::paragraph(gintro)];
+        }
+        ws.save_page(&g)?;
+        if first {
+            let (name, text) = transcription_example(fr);
+            let sub = ws.create_page(Some(&g), name)?;
+            ws.pages.get_mut(&sub).unwrap().blocks = vec![Block::paragraph(text)];
+            ws.save_page(&sub)?;
+            example = Some(sub);
+        }
+    }
+    Ok(example)
 }
 
 impl NcApp {
@@ -163,87 +238,37 @@ impl NcApp {
         let _ = ws.save_page(&g);
     }
 
-    /// Makes sure the templates page exists, with the standard meeting minutes in it and the group of note
-    /// templates (what the AI follows to write the notes of a recorded meeting).
+    /// Makes sure the templates page exists. The very first time it also writes one example of each kind, in a
+    /// section it creates (see [`seed`]); it never adds anything to a section that is already there.
     pub fn ensure_templates(&mut self) {
+        self.ensure_templates_with(false);
+    }
+
+    /// Same, and the transcription section exists afterwards (empty when it has to be created again).
+    pub fn ensure_transcription_group(&mut self) {
+        self.ensure_templates_with(true);
+    }
+
+    fn ensure_templates_with(&mut self, with_group: bool) {
         self.migrate_group_title();
-        let fr = self.prefs.lang == Lang::Fr;
-        let Some(ws) = self.ws.as_mut() else { return };
-        if templates_root(ws).is_some() && notes_group(ws).is_some() && self.prefs.meeting.notes_seeded
-            || self.prefs.meeting.seed_failed
-        {
+        if self.prefs.meeting.seed_failed {
             return;
         }
-        let result = (|| -> notecraft_core::Result<()> {
-            let root = match templates_root(ws) {
-                Some(r) => r,
-                None => {
-                    let (title, intro) = if fr {
-                        (
-                            "Modèles",
-                            "Chaque sous-page de cette page est un modèle de page. Écrivez ou modifiez-la comme une page ordinaire, puis insérez-la où vous voulez avec / puis Modèle. {{date}} devient la date du jour. Les modèles de transcription (ce que l'IA suit pour rédiger une réunion enregistrée) sont dans la page « Modèles de transcription ».",
-                        )
-                    } else {
-                        (
-                            "Templates",
-                            "Each sub-page of this page is a page template. Write or edit it like any page, then insert it anywhere with / then Template. {{date}} becomes today's date. Templates the AI follows to write up a recorded meeting are in the \"Transcription templates\" page.",
-                        )
-                    };
-                    let root = ws.create_page(None, title)?;
-                    {
-                        let p = ws.pages.get_mut(&root).unwrap();
-                        p.meta.icon = "📋".into();
-                        p.blocks = vec![Block::paragraph(intro)];
-                    }
-                    ws.save_page(&root)?;
-                    let (name, md) = minutes(fr);
-                    let sub = ws.create_page(Some(&root), name)?;
-                    {
-                        let p = ws.pages.get_mut(&sub).unwrap();
-                        p.meta.icon = "📝".into();
-                        p.blocks = blocks::from_markdown(md);
-                    }
-                    ws.save_page(&sub)?;
-                    root
-                }
-            };
-            let group = match notes_group(ws) {
-                Some(g) => g,
-                None => {
-                    let (gtitle, gintro) = group_texts(fr);
-                    let g = ws.create_page(Some(&root), gtitle)?;
-                    {
-                        let p = ws.pages.get_mut(&g).unwrap();
-                        p.meta.icon = "🎙".into();
-                        p.blocks = vec![Block::paragraph(gintro)];
-                    }
-                    ws.save_page(&g)?;
-                    g
-                }
-            };
-            // the built-in note templates become pages, so that they can be edited like the others
-            let lang = if fr { Lang::Fr } else { Lang::En };
-            let existing: Vec<String> = ws.children(Some(&group)).into_iter().map(|c| c.title).collect();
-            for key in notecraft_ai::NOTE_TEMPLATES.iter().filter(|k| **k != "custom") {
-                let name = crate::meeting::template_label(lang, key);
-                // already there in either language: do not add a second copy after a change of language
-                let other = crate::meeting::template_label(if fr { Lang::En } else { Lang::Fr }, key);
-                if existing.iter().any(|t| t == name || t == other) {
-                    continue;
-                }
-                let sub = ws.create_page(Some(&group), name)?;
-                {
-                    let p = ws.pages.get_mut(&sub).unwrap();
-                    p.blocks = vec![Block::paragraph(notecraft_ai::note_structure_text(key))];
-                }
-                ws.save_page(&sub)?;
-            }
-            Ok(())
-        })();
-        match result {
-            Ok(()) => {
+        let fr = self.prefs.lang == Lang::Fr;
+        let first = !self.prefs.meeting.notes_seeded;
+        let Some(ws) = self.ws.as_mut() else { return };
+        if !first && templates_root(ws).is_some() && (!with_group || notes_group(ws).is_some()) {
+            return;
+        }
+        match seed(ws, fr, first, with_group) {
+            Ok(example) => {
                 self.prefs.meeting.notes_seeded = true;
-                self.prefs.meeting.template = self.effective_template();
+                // the default choice becomes the example page, so that the menu shows it as selected
+                if let Some(id) = example {
+                    if self.prefs.meeting.template == "summary" {
+                        self.prefs.meeting.template = format!("page:{id}");
+                    }
+                }
             }
             Err(e) => {
                 self.prefs.meeting.seed_failed = true;
@@ -299,5 +324,52 @@ mod tests {
         assert_eq!(notes_group(&w), Some(g));
         assert!(is_group_title("Transcription templates"));
         assert!(!is_group_title("Meeting notes"));
+    }
+
+    #[test]
+    fn only_one_example_of_each_kind_is_written_and_only_into_a_new_section() {
+        let (_d, mut w) = ws();
+        let id = seed(&mut w, false, true, false).unwrap().expect("the transcription example");
+        let root = templates_root(&w).unwrap();
+        let group = notes_group(&w).unwrap();
+        let page_templates = template_results(&w, "");
+        assert_eq!(page_templates.len(), 1, "one page template");
+        assert!(page_templates[0].title.starts_with("Example"));
+        assert_eq!(note_templates(&w).len(), 1, "one transcription template");
+        assert_eq!(note_templates(&w)[0].0, format!("page:{id}"));
+        // what the person deletes does not come back
+        w.trash_doc(&DocId::Page(id)).unwrap();
+        w.trash_doc(&DocId::Page(page_templates[0].doc.id().to_string())).unwrap();
+        assert_eq!(seed(&mut w, false, false, false).unwrap(), None);
+        assert!(note_templates(&w).is_empty() && template_results(&w, "").is_empty());
+        assert_eq!(templates_root(&w), Some(root));
+        assert_eq!(notes_group(&w), Some(group));
+    }
+
+    #[test]
+    fn templates_the_person_already_has_are_never_duplicated() {
+        let (_d, mut w) = ws();
+        let root = w.create_page(None, "Templates").unwrap();
+        let mine = w.create_page(Some(&root), "Meeting notes").unwrap();
+        let group = w.create_page(Some(&root), "Transcription templates").unwrap();
+        w.create_page(Some(&group), "My own").unwrap();
+        // a first run on a workspace that already has both sections writes nothing
+        assert_eq!(seed(&mut w, true, true, true).unwrap(), None);
+        assert_eq!(w.children(Some(&root)).len(), 2);
+        assert_eq!(note_templates(&w).len(), 1);
+        assert_eq!(template_results(&w, "")[0].doc.id(), mine);
+    }
+
+    #[test]
+    fn a_deleted_transcription_section_comes_back_only_when_asked_and_empty() {
+        let (_d, mut w) = ws();
+        seed(&mut w, false, true, false).unwrap();
+        let group = notes_group(&w).unwrap();
+        w.trash_doc(&DocId::Page(group)).unwrap();
+        assert_eq!(seed(&mut w, false, false, false).unwrap(), None);
+        assert_eq!(notes_group(&w), None, "the page templates button does not bring it back");
+        assert_eq!(seed(&mut w, false, false, true).unwrap(), None);
+        let g = notes_group(&w).expect("asked for explicitly");
+        assert!(w.children(Some(&g)).is_empty(), "and it comes back without examples");
     }
 }

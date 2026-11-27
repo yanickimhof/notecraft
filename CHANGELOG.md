@@ -12,7 +12,7 @@ Merges the 0.5.x releases.
 - A tour page, Discover NøteCraft, in every new workspace.
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish; a green dot in the sidebar shows what is live. Mermaid diagrams, equations and image sizes carry over.
 - Grok as a fourth AI engine (with Claude, ChatGPT and the local model).
-- Meeting notes: kinds of meeting with editable transcription templates (the instructions the AI follows to write up a recorded meeting), kept as pages in a Transcription templates section, apart from the page templates; menus for what is recorded, the language, the microphone and the template; a reset to defaults.
+- Meeting notes: kinds of meeting with editable transcription templates (the instructions the AI follows to write up a recorded meeting), kept as pages in a Transcription templates section, apart from the page templates, with a single example of each kind written the first time and never added again to a section you already have; menus for what is recorded, the language, the microphone and the template; a reset to defaults.
 - Local models: suggested models with download, progress, choose and remove, from the same menu as the cloud engines; an offer to download one when Ollama has none.
 - Sidebar: a Templates section, and folding sections that remember their state.
 - Today's date (/ then date, or Command Shift D), page templates (/ then Template), and 24 cover gradients.

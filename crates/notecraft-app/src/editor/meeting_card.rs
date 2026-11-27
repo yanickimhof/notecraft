@@ -184,13 +184,10 @@ pub(super) fn meeting_card(
                             }
                         }
                         // the kind of meeting: how the notes will be written
-                        // the templates are the pages of the Meeting notes group; the built-in
-                        // ones are only used until those pages exist
+                        // the templates are the pages of the Transcription templates group
                         let mut tpls: Vec<(String, String)> = if v.custom_templates.is_empty() {
-                            notecraft_ai::NOTE_TEMPLATES
-                                .iter()
-                                .map(|k| ((*k).to_string(), crate::meeting::template_label(lang, k).to_string()))
-                                .collect()
+                            // none left: the general summary keeps the block working, nothing else comes back
+                            vec![("summary".to_string(), crate::meeting::template_label(lang, "summary").to_string())]
                         } else {
                             v.custom_templates.clone()
                         };

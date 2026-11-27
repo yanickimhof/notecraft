@@ -37,7 +37,7 @@ pub struct MeetingPrefs {
     pub auto_notes: bool,
     /// Names, projects and jargon the speech model should spell right (commas or lines).
     pub vocabulary: String,
-    /// The built-in note templates have been written as pages (so they can be edited).
+    /// The example templates have been written once (never again, whatever is deleted or reset).
     pub notes_seeded: bool,
     /// Writing the templates failed this session: do not try again at every frame.
     #[serde(skip)]
@@ -334,15 +334,16 @@ impl NcApp {
         }
     }
 
-    /// The template to use: a built-in one that has been written as a page (and maybe edited) is that page.
+    /// The template to use, always one that exists: the stored choice when it is one of the person's transcription
+    /// templates, otherwise the first of them (a built-in key such as the default one, or a page that is gone).
+    /// Only when there is no transcription template at all does the built-in general summary stand in.
     pub fn effective_template(&self) -> String {
         let t = &self.prefs.meeting.template;
-        // once the built-in templates are pages, the stored key is final: no lookup by name
-        if t.starts_with("page:") || self.prefs.meeting.notes_seeded {
-            return t.clone();
+        let pages = self.cached_note_templates();
+        match pages.first() {
+            Some((first, _)) if t != "custom" && !pages.iter().any(|(k, _)| k == t) => first.clone(),
+            _ => t.clone(),
         }
-        let label = template_label(self.prefs.lang, t);
-        self.cached_note_templates().into_iter().find(|(_, n)| n == label).map(|(k, _)| k).unwrap_or_else(|| t.clone())
     }
 
     /// The note templates of the workspace, cached for a second (the meeting block asks at every frame).
@@ -415,13 +416,21 @@ impl NcApp {
             }
             MeetingAction::SetTemplate(t) => self.prefs.meeting.template = t,
             MeetingAction::ManageTemplates => {
-                self.ensure_templates();
+                self.ensure_transcription_group();
                 if let Some(id) = self.ws.as_ref().and_then(crate::app::notes_group) {
                     self.navigate(Target::Doc(notecraft_core::DocId::Page(id)));
                 }
             }
             MeetingAction::ResetSettings => {
+                // the example templates were written once: a reset never writes them again, and it picks the
+                // first transcription template the person has rather than a built-in one
+                let (seeded, failed) = (self.prefs.meeting.notes_seeded, self.prefs.meeting.seed_failed);
                 self.prefs.meeting = MeetingPrefs::default();
+                self.prefs.meeting.notes_seeded = seeded;
+                self.prefs.meeting.seed_failed = failed;
+                if let Some((key, _)) = self.cached_note_templates().into_iter().next() {
+                    self.prefs.meeting.template = key;
+                }
                 self.meeting.error = None;
                 self.meeting.silent_device = None;
                 self.meeting.mic_help = false;
