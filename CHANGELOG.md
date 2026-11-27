@@ -2,16 +2,6 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are not itemised.
 
-## 0.6.1 (2026-11-27)
-
-### Added
-- Send a page by email: Page menu, Export, Send by email opens a draft in the Mac's mail application (Mail, Outlook...) with the formatting kept (headings, lists, bold, colours, links, images).
-- Simple tables: select several cells (drag from one cell to another, shift click, the grip at the left of a row, the arrow above a column, or Escape in a cell), then format them together with a small bar: bold, italic, underline, strike, code, text colour and cell background. The same shortcuts as in a page work in a cell (Command B, I, U, E, Shift S). Delete empties the selected cells and Command C copies them.
-- Cells can have a background colour; it shows on published pages too.
-
-### Fixed
-- Delete at the end of a line pulls the next line up.
-
 ## 0.6.0 (2026-11-27)
 
 Merges the 0.5.x releases.
@@ -35,6 +25,8 @@ Merges the 0.5.x releases.
 - Pasting from Outlook, Word or a web page keeps headings, lists, bold, links and tables, and colours.
 - Command click on a link opens it.
 - Automatic backups thinned like Time Machine.
+- Send a page by email: Page menu, Export, Send by email opens a draft in the Mac's mail application (Mail, Outlook...) with the formatting kept (headings, lists, bold, colours, links, images).
+- Simple tables: select several cells (drag from one cell to another, shift click, the grip at the left of a row, the arrow above a column, or Escape in a cell), then format them together with a small bar: bold, italic, underline, strike, code, text colour and cell background (also shown on published pages). The page shortcuts work in a cell (Command B, I, U, E, Shift S). Delete empties the selected cells and Command C copies them.
 
 ### Changed
 - Long pages stay smooth: blocks far outside the window are no longer redrawn.
