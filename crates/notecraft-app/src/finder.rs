@@ -168,6 +168,8 @@ impl NcApp {
                                             .max_rect(rect.shrink2(Vec2::new(10.0, 4.0)))
                                             .layout(egui::Layout::left_to_right(egui::Align::Center)),
                                     );
+                                    // the text of a row is not selectable: it would take the click meant for the row
+                                    child.style_mut().interaction.selectable_labels = false;
                                     let icon = if r.icon.is_empty() {
                                         match r.doc {
                                             DocId::Database(_) => "🗂".to_string(),
@@ -237,5 +239,49 @@ impl NcApp {
             return;
         }
         self.finder = Some(finder);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui_kittest::kittest::Queryable;
+
+    /// A finder row: a clickable rectangle with the icon and the title drawn over it, as in `finder_ui`.
+    fn row(ui: &mut egui::Ui, title: &str, selectable_text: bool) -> egui::Response {
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(300.0, 40.0), Sense::click());
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(rect.shrink2(Vec2::new(10.0, 4.0)))
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        if !selectable_text {
+            child.style_mut().interaction.selectable_labels = false;
+        }
+        child.label(RichText::new("📄").size(17.0));
+        child.label(RichText::new(title).size(14.5));
+        resp
+    }
+
+    fn clicks_on_the_title(selectable_text: bool) -> bool {
+        let mut h =
+            egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
+                |ui, clicked: &mut bool| {
+                    if row(ui, "Action tracker", selectable_text).clicked() {
+                        *clicked = true;
+                    }
+                },
+                false,
+            );
+        h.run();
+        h.get_by_label("Action tracker").click();
+        h.run();
+        h.run();
+        *h.state()
+    }
+
+    #[test]
+    fn a_click_on_the_title_of_a_row_picks_it() {
+        assert!(clicks_on_the_title(false), "the text of a row must not take the click");
     }
 }

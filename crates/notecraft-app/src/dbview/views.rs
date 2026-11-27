@@ -1035,6 +1035,8 @@ impl DbUi {
                         .max_rect(rect.shrink2(Vec2::new(8.0, 0.0)))
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
+                // the text of a row is not selectable: it would take the click meant for the row
+                child.style_mut().interaction.selectable_labels = false;
                 child.label(RichText::new(icon).size(15.0));
                 child.label(RichText::new(title).size(14.5).color(pal.text));
                 child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
