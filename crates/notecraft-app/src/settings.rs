@@ -686,14 +686,23 @@ impl NcApp {
             cycle(ui, &pal, &mut self.prefs.meeting.engine, &opts, false);
         });
         srow(ui, &pal, tr(lang, "meeting_template"), "", None, |ui| {
-            let mut opts: Vec<(String, Glyph, String)> = notecraft_ai::NOTE_TEMPLATES
-                .iter()
-                .map(|k| ((*k).to_string(), Glyph::None, crate::meeting::template_label(lang, k).to_string()))
-                .collect();
-            if let Some(ws) = self.ws.as_ref() {
-                for (k, t) in crate::app::note_templates(ws) {
-                    opts.push((k, Glyph::None, t));
-                }
+            // the transcription templates are the pages of their group; the built-in ones only stand in until
+            // those pages exist
+            let pages = self.ws.as_ref().map(crate::app::note_templates).unwrap_or_default();
+            let mut opts: Vec<(String, Glyph, String)> = if pages.is_empty() {
+                notecraft_ai::NOTE_TEMPLATES
+                    .iter()
+                    .map(|k| ((*k).to_string(), Glyph::None, crate::meeting::template_label(lang, k).to_string()))
+                    .collect()
+            } else {
+                pages.into_iter().map(|(k, t)| (k, Glyph::None, t)).collect()
+            };
+            if self.prefs.meeting.template == "custom" && opts.iter().all(|(k, _, _)| k != "custom") {
+                opts.push((
+                    "custom".to_string(),
+                    Glyph::None,
+                    crate::meeting::template_label(lang, "custom").to_string(),
+                ));
             }
             cycle(ui, &pal, &mut self.prefs.meeting.template, &opts, true);
         });

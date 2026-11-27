@@ -433,6 +433,7 @@ impl NcApp {
                     self.notify(ws.warnings.join("\n"));
                 }
                 self.ws = Some(ws);
+                self.migrate_group_title();
                 self.back.clear();
                 self.forward.clear();
                 self.tabs.clear();
