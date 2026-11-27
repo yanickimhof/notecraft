@@ -12,10 +12,11 @@ Merges the 0.5.x releases.
 - A tour page, Discover NøteCraft, in every new workspace.
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish; a green dot in the sidebar shows what is live. Mermaid diagrams, equations and image sizes carry over.
 - Grok as a fourth AI engine (with Claude, ChatGPT and the local model).
-- Meeting notes: kinds of meeting with editable transcription templates (the instructions the AI follows to write up a recorded meeting), kept as pages in a Transcription templates section, apart from the page templates, with a single example of each kind written the first time and never added again to a section you already have; menus for what is recorded, the language, the microphone and the template; a reset to defaults.
+- Meeting notes: one transcription template per kind of meeting (summary, minutes, one to one, interview, sales call, lecture, or your own), written as editable pages in a Transcription templates section. The meeting block lists only these templates, apart from the page templates, and has menus for what is recorded, the language, the microphone and the template, plus a reset of the recording settings.
+- Templates: a Templates section in the sidebar holds page templates that `/` then Template pastes into any page; a new workspace starts with one example of each kind, and nothing is ever added to a section you already have.
 - Local models: suggested models with download, progress, choose and remove, from the same menu as the cloud engines; an offer to download one when Ollama has none.
-- Sidebar: a Templates section, and folding sections that remember their state.
-- Today's date (/ then date, or Command Shift D), page templates (/ then Template), and 24 cover gradients.
+- Sidebar: folding sections that remember their state.
+- Today's date (/ then date, or Command Shift D), and 24 cover gradients.
 - Command A selects a line, then the whole page; copying gives rich text for a mail or Word, and Markdown for a text editor.
 - Actions on several selected lines at once, and columns by dragging a line beside another.
 - Dropping a file on a page shows where the link will land.
@@ -27,14 +28,10 @@ Merges the 0.5.x releases.
 
 ### Changed
 - Long pages stay smooth: blocks far outside the window are no longer redrawn.
-- The editor was reorganised into smaller parts for reliability.
 - Presentation opens the page in the browser with the published rendering.
 - Simpler page menu, "Turn into" ticks the current type, simpler bullets, and /page adds a sub-page without a link in the body.
 - Reminders and Graph shortcuts left the sidebar.
 - Pasted links are never fetched when they point at this Mac or a private network.
-
-### Fixed
-- Many bug fixes and security hardening across the editor, import, export and model downloads.
 
 ## 0.4.0 (2026-11-24)
 

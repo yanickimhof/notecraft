@@ -24,13 +24,13 @@ CONTENT = {
  "en": {
   "file": "features.html", "tagline": "Your notes, tables and ideas in one fast Mac app.",
   "cards": [
-   ("write", "Write", ["Pages inside pages, type / to add anything", "Headings, lists, to-dos, callouts, code", "Tabs, columns, colours, [[links]] and backlinks"]),
+   ("write", "Write", ["Pages inside pages, type / to add anything", "Headings, lists, to-dos, callouts, code", "Page templates, tabs, columns, [[links]] and backlinks"]),
    ("math", "Study and visualise", ["Equations with a step by step solver", "Flowcharts drawn from text", "Present any page as full screen slides"]),
    ("db", "Databases", ["Formula, rollup, relation, status and more", "7 views: table, board, list, calendar, gallery, chart, timeline", "Filters, sorting, grouping, templates"]),
    ("find", "Find", ["Quick finder with ⌘P", "Full text search across everything", "Reminders with a macOS notification"]),
    ("lock", "Protect", ["Private pages locked by passphrase", "Automatic backups and version history", "Safe saving, conflict copies, read-only lock"]),
    ("ai", "AI, your way", ["Summarise, improve, translate, ask a page", "On your Mac with Ollama, or your Claude key", "You see the result before anything changes"]),
-   ("mic", "Meeting notes", ["Live transcript by Whisper, on your Mac", "Microphone, system audio, or both", "Notes from templates: minutes, 1:1, lecture"]),
+   ("mic", "Meeting notes", ["Live transcript by Whisper, on your Mac", "Microphone, system audio, or both", "Your own transcription templates: minutes, 1:1, lecture"]),
    ("link", "Connect", ["Claude Desktop and Claude Code via MCP", "Import Evernote, Obsidian, Bear, Word, CSV", "Command line for scripts"]),
   ],
   "pills": [("home", "Local first"), ("md", "Plain Markdown files"), ("user", "No account, no tracking"), ("plane", "Works offline"), ("sun", "Light and dark, English and French")],
