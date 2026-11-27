@@ -2,6 +2,23 @@
 
 use super::*;
 
+/// A database by id, as an error (never a panic) when it has gone away.
+pub(super) fn db_mut<'a>(ws: &'a mut Workspace, db: &str) -> Result<&'a mut database::Database, ToolError> {
+    ws.dbs.get_mut(db).ok_or_else(|| ToolError::Failed(format!("database not found: {db}")))
+}
+
+/// A row (or a template when `template`) of a database, as an error when it has gone away.
+pub(super) fn row_mut<'a>(
+    ws: &'a mut Workspace,
+    db: &str,
+    rid: &str,
+    template: bool,
+) -> Result<&'a mut database::Row, ToolError> {
+    let d = db_mut(ws, db)?;
+    let r = if template { d.templates.get_mut(rid) } else { d.rows.get_mut(rid) };
+    r.ok_or_else(|| ToolError::Failed(format!("row not found: {rid}")))
+}
+
 pub(super) fn str_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
     args.get(key).and_then(Value::as_str)
 }
@@ -171,9 +188,7 @@ pub(super) fn set_properties(
         let p = find_prop(ws, db, name)?;
         if p.kind == PropKind::Title {
             let title = v.as_str().unwrap_or_default().to_string();
-            let d = ws.dbs.get_mut(db).unwrap();
-            let r = if template { d.templates.get_mut(rid) } else { d.rows.get_mut(rid) }.unwrap();
-            r.meta.title = title;
+            row_mut(ws, db, rid, template)?.meta.title = title;
             continue;
         }
         let value = to_prop_value(ws, db, &p, v)?;
@@ -183,7 +198,12 @@ pub(super) fn set_properties(
                 PropValue::Multi(v) => v.clone(),
                 _ => vec![],
             };
-            let pp = ws.dbs.get_mut(db).unwrap().schema.properties.iter_mut().find(|x| x.id == p.id).unwrap();
+            let pp = db_mut(ws, db)?
+                .schema
+                .properties
+                .iter_mut()
+                .find(|x| x.id == p.id)
+                .ok_or_else(|| ToolError::Failed(format!("property not found: {}", p.name)))?;
             for n in names {
                 if pp.option(&n).is_none() {
                     let color = database::COLORS[(pp.options.len() + 1) % database::COLORS.len()].to_string();
@@ -192,9 +212,7 @@ pub(super) fn set_properties(
                 }
             }
         }
-        let d = ws.dbs.get_mut(db).unwrap();
-        let r = if template { d.templates.get_mut(rid) } else { d.rows.get_mut(rid) }.unwrap();
-        r.set_value(&p, value);
+        row_mut(ws, db, rid, template)?.set_value(&p, value);
     }
     if schema_changed {
         ws.save_schema(db)?;
@@ -483,7 +501,7 @@ pub(super) fn guard_locks(ws: &Workspace, name: &str, args: &Value) -> Result<()
 
 pub(super) fn add_options(ws: &mut Workspace, db: &str, pid: &str, options: Option<&Value>) -> Result<(), ToolError> {
     let Some(Value::Array(opts)) = options else { return Ok(()) };
-    if let Some(p) = ws.dbs.get_mut(db).unwrap().schema.properties.iter_mut().find(|p| p.id == pid) {
+    if let Some(p) = db_mut(ws, db)?.schema.properties.iter_mut().find(|p| p.id == pid) {
         for (k, o) in opts.iter().enumerate() {
             if let Some(n) = o.as_str() {
                 if p.option(n).is_none() {
@@ -504,7 +522,7 @@ pub(super) fn finish_row(ws: &mut Workspace, db: &str, rid: &str, args: &Value) 
             set_properties(ws, db, rid, props, false)?;
         }
         if let Some(md) = str_arg(args, "markdown") {
-            ws.dbs.get_mut(db).unwrap().rows.get_mut(rid).unwrap().blocks = blocks::from_markdown(md);
+            row_mut(ws, db, rid, false)?.blocks = blocks::from_markdown(md);
         }
         Ok(())
     })();

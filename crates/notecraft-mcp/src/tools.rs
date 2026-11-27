@@ -241,7 +241,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
                 None => None,
             };
             let id = ws.create_page(parent.as_deref(), title)?;
-            let page = ws.pages.get_mut(&id).unwrap();
+            let page = ws.pages.get_mut(&id).ok_or_else(|| ToolError::Failed(format!("page not found: {id}")))?;
             let mut notes = Vec::new();
             if let Some(md) = str_arg(args, "markdown") {
                 let (b, n) = notecraft_core::import_rich_md::blocks_from_markdown(md);
@@ -420,7 +420,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
             apply_view_spec(ws, &db, &mut view, args)?;
             apply_view_extras(ws, &db, &mut view, args)?;
             let id = view.id.clone();
-            ws.dbs.get_mut(&db).unwrap().schema.views.push(view);
+            db_mut(ws, &db)?.schema.views.push(view);
             ws.save_schema(&db)?;
             Ok(format!("Added the view \"{}\" (id {id}).", need(args, "name")?))
         }
@@ -445,7 +445,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
                 view.group_by = None;
             }
             apply_view_extras(ws, &db, &mut view, args)?;
-            ws.dbs.get_mut(&db).unwrap().schema.views[at] = view;
+            db_mut(ws, &db)?.schema.views[at] = view;
             ws.save_schema(&db)?;
             Ok("Updated the view.".into())
         }
@@ -455,7 +455,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
             if ws.dbs[&db].schema.views.len() <= 1 {
                 return fail("a database keeps at least one view");
             }
-            let removed = ws.dbs.get_mut(&db).unwrap().schema.views.remove(at);
+            let removed = db_mut(ws, &db)?.schema.views.remove(at);
             ws.save_schema(&db)?;
             Ok(format!("Deleted the view \"{}\".", removed.name))
         }
@@ -466,7 +466,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
                 set_properties(ws, &db, &tid, props, true)?;
             }
             if let Some(md) = str_arg(args, "markdown") {
-                ws.dbs.get_mut(&db).unwrap().templates.get_mut(&tid).unwrap().blocks = blocks::from_markdown(md);
+                row_mut(ws, &db, &tid, true)?.blocks = blocks::from_markdown(md);
             }
             ws.save_template(&db, &tid)?;
             Ok(format!("Added the template \"{}\" (id {tid}).", need(args, "name")?))
@@ -632,7 +632,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
             if let Some(kind) = str_arg(args, "view") {
                 let k: ViewKind = serde_json::from_value(json!(kind))
                     .map_err(|_| ToolError::Failed(format!("unknown view {kind}")))?;
-                if let Some(v) = ws.dbs.get_mut(&id).unwrap().schema.views.first_mut() {
+                if let Some(v) = db_mut(ws, &id)?.schema.views.first_mut() {
                     v.kind = k;
                     v.name = kind[..1].to_uppercase() + &kind[1..];
                 }
@@ -667,14 +667,14 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
             add_options(ws, &db, &pid, args.get("options"))?;
             if let Some(rel) = str_arg(args, "relation_database") {
                 let target = find_db(ws, rel)?;
-                if let Some(p) = ws.dbs.get_mut(&db).unwrap().schema.properties.iter_mut().find(|p| p.id == pid) {
+                if let Some(p) = db_mut(ws, &db)?.schema.properties.iter_mut().find(|p| p.id == pid) {
                     p.relation_db = Some(target);
                 }
                 ws.save_schema(&db)?;
             }
             if let Some(f) = str_arg(args, "formula") {
                 notecraft_core::formula::check(f).map_err(|e| ToolError::Failed(format!("formula: {e}")))?;
-                if let Some(p) = ws.dbs.get_mut(&db).unwrap().schema.properties.iter_mut().find(|p| p.id == pid) {
+                if let Some(p) = db_mut(ws, &db)?.schema.properties.iter_mut().find(|p| p.id == pid) {
                     p.formula = f.to_string();
                 }
                 ws.save_schema(&db)?;
@@ -689,7 +689,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
                 let func = str_arg(args, "rollup_function").unwrap_or("count");
                 let func = notecraft_core::formula::RollupFunc::from_key(&func.to_lowercase())
                     .ok_or_else(|| ToolError::Failed(format!("unknown rollup_function {func}")))?;
-                if let Some(p) = ws.dbs.get_mut(&db).unwrap().schema.properties.iter_mut().find(|p| p.id == pid) {
+                if let Some(p) = db_mut(ws, &db)?.schema.properties.iter_mut().find(|p| p.id == pid) {
                     p.rollup = Some(notecraft_core::formula::Rollup { relation: rel.id, target, func });
                 }
                 ws.save_schema(&db)?;
@@ -726,7 +726,7 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
                 .ok_or_else(|| ToolError::Failed(format!("template not found: {key}")))?;
             let title = need(args, "title")?;
             let rid = ws.add_row(&db, Some(&tpl), title)?;
-            ws.dbs.get_mut(&db).unwrap().rows.get_mut(&rid).unwrap().meta.title = title.to_string();
+            row_mut(ws, &db, &rid, false)?.meta.title = title.to_string();
             finish_row(ws, &db, &rid, args)?;
             Ok(format!("Added row \"{title}\" from template (id {rid})."))
         }
@@ -738,10 +738,10 @@ fn call_inner(ws: &mut Workspace, name: &str, args: &Value, policy: &Policy, sco
                 set_properties(ws, &db, &rid, props, false)?;
             }
             if let Some(md) = str_arg(args, "markdown") {
-                ws.dbs.get_mut(&db).unwrap().rows.get_mut(&rid).unwrap().blocks.extend(blocks::from_markdown(md));
+                row_mut(ws, &db, &rid, false)?.blocks.extend(blocks::from_markdown(md));
             }
             if let Some(t) = str_arg(args, "title") {
-                ws.dbs.get_mut(&db).unwrap().rows.get_mut(&rid).unwrap().meta.title = t.to_string();
+                row_mut(ws, &db, &rid, false)?.meta.title = t.to_string();
             }
             ws.touch(&DocId::Row(db.clone(), rid.clone()));
             ws.save_row(&db, &rid)?;
