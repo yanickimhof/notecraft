@@ -48,6 +48,35 @@ pub fn parse(text: &str) -> Vec<Segment> {
     out
 }
 
+const FILL_OPEN: &str = "<!--bg:";
+
+fn fill_prefix(text: &str) -> Option<(&str, usize)> {
+    let tail = text.strip_prefix(FILL_OPEN)?;
+    let close = tail.find("-->")?;
+    let name = &tail[..close];
+    if name.is_empty() || name.len() > 12 || !name.chars().all(|c| c.is_ascii_lowercase()) {
+        return None;
+    }
+    Some((name, FILL_OPEN.len() + close + 3))
+}
+
+/// A table cell's fill colour (stored as a hidden `<!--bg:NAME-->` at its start) and the text after it.
+pub fn split_fill(cell: &str) -> (Option<&str>, &str) {
+    match fill_prefix(cell) {
+        Some((name, len)) => (Some(name), &cell[len..]),
+        None => (None, cell),
+    }
+}
+
+/// The cell with its fill set (or removed with `None`).
+pub fn set_fill(cell: &str, fill: Option<&str>) -> String {
+    let (_, body) = split_fill(cell);
+    match fill {
+        Some(n) => format!("{FILL_OPEN}{n}-->{body}"),
+        None => body.to_string(),
+    }
+}
+
 const COLOR_OPEN: &str = "<span style=\"color:";
 
 fn find_from(text: &str, from: usize, end: usize, pat: &str) -> Option<usize> {
@@ -62,6 +91,15 @@ fn parse_range(text: &str, start: usize, end: usize, base: &Style, out: &mut Vec
         let rest = &text[i..end];
         let c = rest.chars().next().unwrap();
         let clen = c.len_utf8();
+        // table cell fill, hidden: <!--bg:NAME-->
+        if i == start && base == &Style::default() {
+            if let Some((name, len)) = fill_prefix(rest) {
+                let _ = name;
+                push(out, i..i + len, true, &style);
+                i += len;
+                continue;
+            }
+        }
         // escapes
         if c == '\\' && i + 1 < end && (bytes[i + 1] as char).is_ascii_punctuation() {
             push(out, i..i + 1, true, &style);
@@ -980,5 +1018,20 @@ mod tests {
         let (all, _) = set_color(t, (0, t.chars().count()), Some("green"));
         assert_eq!(all, "<span style=\"color:green\">a b c d</span>");
         assert_eq!(strip_colors(t), "a b c d");
+    }
+}
+
+#[cfg(test)]
+mod fill_tests {
+    use super::*;
+
+    #[test]
+    fn cell_fill_round_trips_and_stays_hidden() {
+        let c = set_fill("**a** b", Some("yellow"));
+        assert_eq!(split_fill(&c), (Some("yellow"), "**a** b"));
+        assert_eq!(strip(&c), "a b");
+        assert_eq!(set_fill(&c, Some("red")), "<!--bg:red-->**a** b");
+        assert_eq!(set_fill(&c, None), "**a** b");
+        assert_eq!(split_fill("<!--bg:-->x"), (None, "<!--bg:-->x"));
     }
 }

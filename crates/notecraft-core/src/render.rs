@@ -135,7 +135,7 @@ pub(crate) fn items(blocks: &[Block]) -> Vec<Item> {
                     kind: Kind::Para,
                     marker: Marker::None,
                     depth: b.depth,
-                    runs: plain(&row.join("   |   ")),
+                    runs: plain(&row.iter().map(|c| crate::inline::split_fill(c).1).collect::<Vec<_>>().join("   |   ")),
                     color: String::new(),
                 });
             }
@@ -366,6 +366,28 @@ pub fn html_body(blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>)
         }
     }
     body
+}
+
+/// An unsent email (`.eml`) holding the page: formatted HTML and a Markdown text version. Opened with the
+/// system's mail application (Mail, Outlook...), it shows as a draft ready to address and send.
+pub fn to_eml(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>) -> String {
+    let wrap = |s: &str| -> String {
+        let b = base64(s.as_bytes());
+        b.as_bytes().chunks(76).map(|c| String::from_utf8_lossy(c).into_owned()).collect::<Vec<_>>().join("\r\n")
+    };
+    let subject: String = title.chars().filter(|c| !c.is_control()).collect();
+    let html = format!(
+        "<html><head><meta charset=\"utf-8\"><style>body{{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#222}}p{{margin:0 0 .6em}}h2,h3,h4{{margin:1em 0 .4em}}blockquote{{margin:.6em 0;padding-left:.8em;border-left:3px solid #ccc;color:#555}}pre{{background:#f4f3f3;padding:8px;border-radius:4px}}.m{{color:#888}}.callout{{background:#f0efed;padding:8px 10px;border-radius:6px;margin:.6em 0}}img{{max-width:100%}}</style></head><body>{}</body></html>",
+        html_body(blocks, read_asset)
+    );
+    let text = crate::blocks::to_markdown(blocks);
+    let boundary = "=_notecraft_alt_boundary";
+    format!(
+        "X-Unsent: 1\r\nMIME-Version: 1.0\r\nSubject: =?UTF-8?B?{}?=\r\nContent-Type: multipart/alternative; boundary=\"{boundary}\"\r\n\r\n--{boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n{}\r\n--{boundary}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n{}\r\n--{boundary}--\r\n",
+        base64(subject.as_bytes()),
+        wrap(&text),
+        wrap(&html),
+    )
 }
 
 /// A standalone HTML page (images are embedded).
@@ -750,5 +772,22 @@ mod tests {
         assert!(String::from_utf8_lossy(&with).contains("/Subtype/Image"));
         assert!(!String::from_utf8_lossy(&without).contains("/Subtype/Image"));
         assert_eq!(image_size(&pixel()), Some((1, 1)));
+    }
+}
+
+#[cfg(test)]
+mod eml_tests {
+    use super::*;
+    use crate::blocks::{Block, BlockKind};
+
+    #[test]
+    fn the_email_draft_carries_formatted_html_and_text() {
+        let blocks = vec![Block::new(BlockKind::Heading(1), "Plan"), Block::new(BlockKind::Paragraph, "a **b** c")];
+        let eml = to_eml("Plan é", &blocks, &|_| None);
+        assert!(eml.starts_with("X-Unsent: 1\r\n"));
+        assert!(eml.contains("multipart/alternative"));
+        assert!(eml.contains("text/html; charset=utf-8"));
+        assert!(eml.contains("Subject: =?UTF-8?B?"));
+        assert!(eml.ends_with("--\r\n"));
     }
 }

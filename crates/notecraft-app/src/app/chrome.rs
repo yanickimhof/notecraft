@@ -198,6 +198,7 @@ impl NcApp {
                 let mut present = false;
                 let mut remind = false;
                 let mut export_as: Option<notecraft_core::render::Format> = None;
+                let mut email = false;
                 let mut trash = false;
                 let mut duplicate = false;
                 let mut toggle_lock = false;
@@ -290,6 +291,9 @@ impl NcApp {
                                 if ui.button(self.t(key)).clicked() {
                                     export_as = Some(f);
                                 }
+                            }
+                            if ui.button(self.t("export_email")).clicked() {
+                                email = true;
                             }
                         }
                     });
@@ -404,6 +408,9 @@ impl NcApp {
                 }
                 if let Some(f) = export_as {
                     self.export_page_format(&doc, f);
+                }
+                if email {
+                    self.email_page(&doc);
                 }
                 if let (Some(act), DocId::Page(pid)) = (pub_act, &doc) {
                     let ctx = ui.ctx().clone();

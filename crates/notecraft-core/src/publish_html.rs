@@ -399,7 +399,12 @@ impl R<'_, '_> {
             s.push_str("<tr>");
             let tag = if r == 0 { "th" } else { "td" };
             for cell in row {
-                s.push_str(&format!("<{tag}>{}</{tag}>", self.text(cell)));
+                let (fill, body) = crate::inline::split_fill(cell);
+                let style = match fill {
+                    Some(n) if BLOCK_COLORS.contains(&n) => format!(" class=\"bg-{n}\""),
+                    _ => String::new(),
+                };
+                s.push_str(&format!("<{tag}{style}>{}</{tag}>", self.text(body)));
             }
             s.push_str("</tr>");
         }

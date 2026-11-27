@@ -797,6 +797,20 @@ pub fn export_page_as(ws: &Workspace, doc: &DocId, dest: &Path, format: crate::r
     Ok(path)
 }
 
+/// Write the page as an unsent email (`.eml`) into `dest`, ready for the system's mail application.
+pub fn email_draft(ws: &Workspace, doc: &DocId, dest: &Path) -> Result<PathBuf> {
+    let blocks = ws.blocks(doc).ok_or_else(|| crate::Error::NotFound("page".into()))?;
+    let title = ws.title(doc);
+    let read = |rel: &str| std::fs::read(ws.asset_path(rel)).ok();
+    let eml = crate::render::to_eml(&title, blocks, &read);
+    let name: String = title.chars().map(|c| if matches!(c, '/' | '\\' | ':' | '\0') { '-' } else { c }).collect();
+    let name = if name.trim().is_empty() { "Untitled".to_string() } else { name.trim().to_string() };
+    std::fs::create_dir_all(dest)?;
+    let path = dest.join(format!("{name}.eml"));
+    std::fs::write(&path, eml)?;
+    Ok(path)
+}
+
 /// Export every live top-level page and database into `dest`.
 pub fn export_workspace(ws: &Workspace, dest: &Path) -> Result<usize> {
     let roots: Vec<DocId> = ws.children(None).into_iter().map(|t| t.doc).collect();

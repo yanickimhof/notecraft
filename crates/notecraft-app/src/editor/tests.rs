@@ -535,3 +535,86 @@ fn picking_a_transcription_template_takes_one_click_each_time() {
         assert_eq!(h.state().3, key, "one click on {to} must select it; actions: {:?}", h.state().2);
     }
 }
+
+fn editor_harness(blocks: Vec<Block>) -> egui_kittest::Harness<'static, (EditorState, Vec<Block>)> {
+    let h = egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
+        |ui, (state, blocks): &mut (EditorState, Vec<Block>)| {
+            let pal = Palette::light();
+            let titles = HashMap::new();
+            let meeting = crate::meeting::View::default();
+            let embed = |_: &mut Ui, _: u64, _: &str| {};
+            let env = Env {
+                pal: &pal,
+                lang: Lang::En,
+                root: Path::new("."),
+                titles: &titles,
+                key: "del",
+                meeting: &meeting,
+                db_titles: &[],
+                embed: &embed,
+            };
+            state.show(ui, blocks, &env);
+        },
+        (EditorState::default(), blocks),
+    );
+    theme::install_fonts(&h.ctx);
+    h
+}
+
+fn key_event(key: Key, modifiers: egui::Modifiers) -> egui::Event {
+    egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }
+}
+
+#[test]
+fn delete_at_the_end_of_a_line_pulls_the_next_line_up() {
+    let a = Block::new(BlockKind::Paragraph, "abc");
+    let b = Block::new(BlockKind::Paragraph, "def");
+    let c = Block::new(BlockKind::Paragraph, "ghi");
+    let aid = a.id;
+    let mut h = editor_harness(vec![a, b, c]);
+    h.state_mut().0.focus = Some((aid, Caret::End));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(key_event(Key::Delete, egui::Modifiers::NONE));
+    for _ in 0..3 {
+        h.run();
+    }
+    let texts: Vec<_> = h.state().1.iter().map(|b| b.text.clone()).collect();
+    assert_eq!(texts, vec!["abcdef".to_string(), "ghi".to_string()]);
+}
+
+#[test]
+fn table_cells_can_be_selected_and_formatted_together() {
+    let tbl = Block::new(BlockKind::Table, "| a | b |\n| --- | --- |\n| c | d |");
+    let bid = tbl.id;
+    let mut h = editor_harness(vec![tbl]);
+    for _ in 0..2 {
+        h.run();
+    }
+    h.state_mut().0.table_sel = Some((bid, (1, 0), (1, 1)));
+    h.event(key_event(Key::B, egui::Modifiers::COMMAND));
+    for _ in 0..3 {
+        h.run();
+    }
+    let cells = notecraft_core::blocks::table_cells(&h.state().1[0].text);
+    assert_eq!(cells[1][0], "**c**");
+    assert_eq!(cells[1][1], "**d**");
+    assert_eq!(cells[0][0], "a");
+    h.event(key_event(Key::Delete, egui::Modifiers::NONE));
+    for _ in 0..3 {
+        h.run();
+    }
+    let cells = notecraft_core::blocks::table_cells(&h.state().1[0].text);
+    assert_eq!(cells[1], vec![String::new(), String::new()]);
+    assert_eq!(cells[0], vec!["a".to_string(), "b".to_string()]);
+}
+
+#[test]
+fn a_cell_fill_is_kept_in_the_text_and_hidden() {
+    let mut cells = notecraft_core::blocks::table_cells("| a | b |\n| --- | --- |\n| c | d |");
+    cells[1][1] = notecraft_core::inline::set_fill(&cells[1][1], Some("yellow"));
+    let text = notecraft_core::blocks::cells_to_text(&cells);
+    let back = notecraft_core::blocks::table_cells(&text);
+    assert_eq!(notecraft_core::inline::split_fill(&back[1][1]), (Some("yellow"), "d"));
+}

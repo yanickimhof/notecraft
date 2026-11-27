@@ -262,6 +262,19 @@ pub struct EditorState {
     dismissed_slash: Option<(u64, usize)>,
     /// A table cell (block, row, column) that must take the keyboard focus.
     table_focus: Option<(u64, usize, usize)>,
+    /// Selected cells of a simple table: block, anchor (row, column), head (row, column).
+    table_sel: Option<TableSel>,
+    /// Cell where the mouse went down (a drag to another cell selects the cells in between).
+    table_press: Option<(u64, usize, usize)>,
+    /// Last cell that had the keyboard focus (the anchor of a shift-click).
+    table_last: Option<(u64, usize, usize)>,
+    /// Text selected inside a cell (block, row, column, from, to), kept while the format bar is used.
+    table_range: Option<(u64, usize, usize, usize, usize)>,
+    /// Selection to put back in the cell that takes the focus next.
+    table_range_set: Option<(usize, usize)>,
+    /// Open palette of the table bar: 1 = text colour, 2 = cell fill.
+    table_menu: u8,
+    table_bar_rect: Option<Rect>,
     pending_shortcut: Option<(u64, BlockKind, usize)>,
     start: Instant,
 }
@@ -306,6 +319,13 @@ impl Default for EditorState {
             icon_menu: None,
             dismissed_slash: None,
             table_focus: None,
+            table_sel: None,
+            table_press: None,
+            table_last: None,
+            table_range: None,
+            table_range_set: None,
+            table_menu: 0,
+            table_bar_rect: None,
             pending_shortcut: None,
             start: Instant::now(),
         }
@@ -608,6 +628,9 @@ fn set_cursor(ctx: &egui::Context, id: Id, caret: Caret, len: usize) {
     st.cursor.set_char_range(Some(range));
     st.store(ctx, id);
 }
+
+/// Selected cells of a table: block, anchor and head as (row, column).
+type TableSel = (u64, (usize, usize), (usize, usize));
 
 /// Base look of a block's text.
 #[derive(Clone, Copy)]

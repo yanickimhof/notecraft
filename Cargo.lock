@@ -3438,7 +3438,7 @@ dependencies = [
 
 [[package]]
 name = "notecraft-ai"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "notecraft-net",
  "security-framework",
@@ -3449,7 +3449,7 @@ dependencies = [
 
 [[package]]
 name = "notecraft-app"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "arboard",
  "eframe",
@@ -3474,14 +3474,14 @@ dependencies = [
 
 [[package]]
 name = "notecraft-cli"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "notecraft-core",
 ]
 
 [[package]]
 name = "notecraft-core"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "argon2",
  "base64 0.23.1",
@@ -3506,7 +3506,7 @@ dependencies = [
 
 [[package]]
 name = "notecraft-mcp"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "notecraft-core",
  "serde_json",
@@ -3515,7 +3515,7 @@ dependencies = [
 
 [[package]]
 name = "notecraft-meeting"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "block2 0.6.2",
  "cpal",
@@ -3529,7 +3529,7 @@ dependencies = [
 
 [[package]]
 name = "notecraft-net"
-version = "0.6.0"
+version = "0.6.1"
 
 [[package]]
 name = "notify"

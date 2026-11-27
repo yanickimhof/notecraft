@@ -2,7 +2,76 @@
 
 use super::*;
 
+const GRIP_W: f32 = 14.0;
+
+/// What the table bar applies to the selected text or cells.
+#[derive(Clone, Copy)]
+enum CellFormat {
+    Style(inline::StyleKind),
+    Color(Option<&'static str>),
+    Fill(Option<&'static str>),
+}
+
 impl EditorState {
+    fn select_cells(&mut self, ctx: &egui::Context, bid: u64, a: (usize, usize), b: (usize, usize)) {
+        self.table_sel = Some((bid, a, b));
+        self.table_range = None;
+        ctx.memory_mut(|m| {
+            if let Some(f) = m.focused() {
+                m.surrender_focus(f);
+            }
+        });
+    }
+
+    /// Apply a format to the text selected in `cell` (or the whole cell when nothing is selected), or to every
+    /// cell of `many` when there is no single cell.
+    fn apply_cell_format(
+        &mut self,
+        ctx: &egui::Context,
+        cells: &mut [Vec<String>],
+        bid: u64,
+        cell: Option<(usize, usize)>,
+        many: &[(usize, usize)],
+        f: CellFormat,
+    ) {
+        let one = |text: &str, range: Option<(usize, usize)>| -> (String, Option<(usize, usize)>) {
+            let (fill, body) = inline::split_fill(text);
+            let n = body.chars().count();
+            let (a, b) = match range {
+                Some((a, b)) if a != b => (a.min(n), b.min(n)),
+                _ => (0, n),
+            };
+            match f {
+                CellFormat::Fill(name) => (inline::set_fill(text, name), None),
+                _ if n == 0 => (text.to_string(), None),
+                CellFormat::Style(kind) => {
+                    let (t, sel) = inline::toggle_style(body, (a, b), kind);
+                    (inline::set_fill(&t, fill), Some(sel))
+                }
+                CellFormat::Color(name) => {
+                    let (t, sel) = inline::set_color(body, (a, b), name);
+                    (inline::set_fill(&t, fill), Some(sel))
+                }
+            }
+        };
+        if let Some((r, c)) = cell {
+            let cid = Id::unique(("table-cell", bid, r, c));
+            let range = egui::text_edit::TextEditState::load(ctx, cid)
+                .and_then(|s| s.cursor.char_range())
+                .map(|g| (g.primary.index.0.min(g.secondary.index.0), g.primary.index.0.max(g.secondary.index.0)))
+                .or(self.table_range.filter(|t| (t.1, t.2) == (r, c)).map(|t| (t.3, t.4)));
+            let (t, sel) = one(&cells[r][c], range);
+            cells[r][c] = t;
+            self.table_focus = Some((bid, r, c));
+            self.table_range_set = sel;
+            ctx.request_repaint();
+        } else {
+            for &(r, c) in many {
+                cells[r][c] = one(&cells[r][c], None).0;
+            }
+        }
+    }
+
     pub(super) fn table_ui(
         &mut self,
         ui: &mut Ui,
@@ -23,7 +92,8 @@ impl EditorState {
             let total = (width - 40.0).max(60.0 * cols as f32);
             let weights: Vec<f32> = (0..cols)
                 .map(|c| {
-                    let lens: Vec<usize> = cells.iter().map(|r| r.get(c).map_or(0, |t| visible_len(t))).collect();
+                    let lens: Vec<usize> =
+                        cells.iter().map(|r| r.get(c).map_or(0, |t| visible_len(inline::split_fill(t).1))).collect();
                     let avg = lens.iter().sum::<usize>() as f32 / lens.len().max(1) as f32;
                     let max = lens.iter().copied().max().unwrap_or(0) as f32;
                     (0.6 * avg + 0.4 * max.min(120.0)).clamp(8.0, 90.0)
@@ -37,7 +107,7 @@ impl EditorState {
                     let longest = cells
                         .iter()
                         .filter_map(|r| r.get(c))
-                        .flat_map(|t| t.split_whitespace())
+                        .flat_map(|t| inline::split_fill(t).1.split_whitespace())
                         .map(|w| w.chars().count())
                         .max()
                         .unwrap_or(0) as f32;
@@ -103,25 +173,125 @@ impl EditorState {
                 self.table_focus = Some((bid, tr, tc));
             }
         }
+        // Formatting shortcuts act on the text selected in a cell, or on every selected cell.
+        let sel_here = self.table_sel.is_some_and(|s| s.0 == bid);
+        let sel_rect = self.table_sel.filter(|s| s.0 == bid).map(|(_, a, b)| {
+            (a.0.min(b.0).min(rows - 1), a.1.min(b.1).min(cols - 1), a.0.max(b.0).min(rows - 1), a.1.max(b.1).min(cols - 1))
+        });
+        let mut rect_cells: Vec<(usize, usize)> = Vec::new();
+        if let Some((r0, c0, r1, c1)) = sel_rect {
+            for r in r0..=r1 {
+                for c in c0..=c1 {
+                    rect_cells.push((r, c));
+                }
+            }
+        }
+        if focused_cell.is_some() || sel_here {
+            let cmd = Modifiers::COMMAND;
+            let kinds = [
+                (cmd, Key::B, inline::StyleKind::Bold),
+                (cmd, Key::I, inline::StyleKind::Italic),
+                (cmd, Key::U, inline::StyleKind::Underline),
+                (Modifiers::COMMAND | Modifiers::SHIFT, Key::S, inline::StyleKind::Strike),
+                (cmd, Key::E, inline::StyleKind::Code),
+            ];
+            let mut req: Option<inline::StyleKind> = None;
+            tctx.input_mut(|i| {
+                for (m, k, s) in kinds {
+                    if req.is_none() && i.consume_key(m, k) {
+                        req = Some(s);
+                    }
+                }
+            });
+            if let Some(kind) = req {
+                self.apply_cell_format(&tctx, &mut cells, bid, focused_cell, &rect_cells, CellFormat::Style(kind));
+            }
+        }
+        if let (true, None) = (sel_here, focused_cell) {
+            let (mut clear, mut esc, mut copy) = (false, false, false);
+            tctx.input_mut(|i| {
+                clear = i.consume_key(Modifiers::NONE, Key::Backspace) || i.consume_key(Modifiers::NONE, Key::Delete);
+                esc = i.consume_key(Modifiers::NONE, Key::Escape);
+                copy = i.consume_key(Modifiers::COMMAND, Key::C);
+            });
+            if clear {
+                for &(r, c) in &rect_cells {
+                    let fill = inline::split_fill(&cells[r][c]).0.map(str::to_string);
+                    cells[r][c] = inline::set_fill("", fill.as_deref());
+                }
+            }
+            if copy {
+                if let Some((r0, c0, r1, c1)) = sel_rect {
+                    let tsv: Vec<String> = (r0..=r1)
+                        .map(|r| {
+                            (c0..=c1)
+                                .map(|c| inline::strip(&cells[r][c]).replace(['\t', '\n'], " "))
+                                .collect::<Vec<_>>()
+                                .join("\t")
+                        })
+                        .collect();
+                    tctx.copy_text(tsv.join("\n"));
+                }
+            }
+            if esc {
+                self.table_sel = None;
+            }
+        }
+        // the text selected inside the focused cell (the format bar acts on it)
+        if let Some((r, c)) = focused_cell {
+            self.table_last = Some((bid, r, c));
+            let cid = Id::unique(("table-cell", bid, r, c));
+            let rg = egui::text_edit::TextEditState::load(&tctx, cid)
+                .and_then(|s| s.cursor.char_range())
+                .map(|g| (g.primary.index.0.min(g.secondary.index.0), g.primary.index.0.max(g.secondary.index.0)));
+            self.table_range = rg.filter(|g| g.0 != g.1).map(|g| (bid, r, c, g.0, g.1));
+            if self.table_sel.is_some_and(|s| s.0 == bid) {
+                self.table_sel = None;
+            }
+        } else if self.table_range.is_some_and(|t| t.0 == bid) {
+            let over = self.table_bar_rect.zip(tctx.input(|i| i.pointer.interact_pos())).is_some_and(|(r, p)| r.contains(p));
+            if !over {
+                self.table_range = None;
+            }
+        }
+        let mut cell_rects: Vec<Vec<Rect>> = vec![vec![Rect::NOTHING; cols]; rows];
+        let mut grip_clicked: Option<usize> = None;
+        let mut strip_clicked: Option<usize> = None;
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, 0.0);
             egui::ScrollArea::horizontal().id_salt(("table-scroll", bid)).auto_shrink([false, true]).show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.add_space(GRIP_W);
                         for (c, &cw) in col_ws.iter().enumerate() {
                             let (r, resp) = ui.allocate_exact_size(Vec2::new(cw, 16.0), Sense::click());
-                            if cols > 1 && ui.rect_contains_pointer(r.expand2(Vec2::new(0.0, 4.0))) {
+                            let hot = ui.rect_contains_pointer(r.expand2(Vec2::new(0.0, 4.0)));
+                            if hot {
                                 ui.painter().text(
                                     r.center(),
                                     Align2::CENTER_CENTER,
-                                    "×",
+                                    "▾",
                                     FontId::proportional(10.0),
                                     pal.text_faint,
                                 );
-                                if resp.clicked() {
-                                    drop_col = Some(c);
+                                if cols > 1 {
+                                    let x = Rect::from_center_size(egui::pos2(r.max.x - 10.0, r.center().y), Vec2::splat(14.0));
+                                    ui.painter().text(
+                                        x.center(),
+                                        Align2::CENTER_CENTER,
+                                        "×",
+                                        FontId::proportional(10.0),
+                                        pal.text_faint,
+                                    );
+                                    if resp.clicked() && resp.interact_pointer_pos().is_some_and(|p| x.contains(p)) {
+                                        drop_col = Some(c);
+                                        continue;
+                                    }
                                 }
+                            }
+                            if resp.clicked() {
+                                strip_clicked = Some(c);
                             }
                         }
                     });
@@ -137,18 +307,37 @@ impl EditorState {
                             .iter()
                             .enumerate()
                             .map(|(ci, c)| {
-                                let job = inline_job(c, &row_base, pal, col_ws[ci] - 18.0);
+                                let job = inline_job(inline::split_fill(c).1, &row_base, pal, col_ws[ci] - 18.0);
                                 ui.fonts_mut(|f| f.layout_job(job)).size().y
                             })
                             .fold(row_base.size * 1.5, f32::max);
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
+                            let (grip, gresp) = ui.allocate_exact_size(Vec2::new(GRIP_W, row_h + 10.0), Sense::click());
+                            if ui.rect_contains_pointer(grip) {
+                                ui.painter().text(
+                                    grip.center(),
+                                    Align2::CENTER_CENTER,
+                                    "⠿",
+                                    FontId::proportional(11.0),
+                                    pal.text_faint,
+                                );
+                            }
+                            if gresp.clicked() {
+                                grip_clicked = Some(ri);
+                            }
                             for (ci, cell) in row.iter_mut().enumerate() {
+                                let fill_name = inline::split_fill(cell).0.map(str::to_string);
+                                let fill = match fill_name.as_deref() {
+                                    Some(n) => pal.option_tokens(n).0,
+                                    None if ri == 0 => pal.hover,
+                                    None => Color32::TRANSPARENT,
+                                };
                                 let frame = egui::Frame::NONE
                                     .stroke(Stroke::new(1.0, pal.border))
-                                    .fill(if ri == 0 { pal.hover } else { Color32::TRANSPARENT })
+                                    .fill(fill)
                                     .inner_margin(egui::Margin::symmetric(8, 5));
-                                frame.show(ui, |ui| {
+                                let shown = frame.show(ui, |ui| {
                                     ui.set_min_height(row_h);
                                     // long text wraps inside the cell; a cell stays one line of text
                                     // inline styles (bold, links, colours...) render inside cells too
@@ -166,10 +355,16 @@ impl EditorState {
                                     // the text being typed keeps its spaces; the stored cell is trimmed
                                     let cid = Id::unique(("table-cell", bid, ri, ci));
                                     let raw_id = Id::unique(("table-raw", bid, ri, ci));
+                                    let body = inline::split_fill(cell).1.to_string();
                                     let mut buf: String = ui
                                         .data(|d| d.get_temp::<String>(raw_id))
-                                        .filter(|r| r.trim() == cell.as_str())
-                                        .unwrap_or_else(|| cell.clone());
+                                        .filter(|r| r.trim() == body.as_str())
+                                        .unwrap_or_else(|| body.clone());
+                                    if self.table_focus == Some((bid, ri, ci)) {
+                                        if let Some((a, b)) = self.table_range_set.take() {
+                                            set_cursor(ui.ctx(), cid, Caret::Select(a, b), buf.chars().count());
+                                        }
+                                    }
                                     let o = egui::TextEdit::multiline(&mut buf)
                                         .desired_rows(1)
                                         .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
@@ -197,12 +392,13 @@ impl EditorState {
                                     }
                                     let buf = buf.replace('\r', "");
                                     ui.data_mut(|d| d.insert_temp(raw_id, buf.clone()));
-                                    *cell = buf.trim().to_string();
+                                    *cell = inline::set_fill(buf.trim(), fill_name.as_deref());
                                     if self.table_focus == Some((bid, ri, ci)) {
                                         resp.request_focus();
                                         self.table_focus = None;
                                     }
                                 });
+                                cell_rects[ri][ci] = shown.response.rect;
                             }
                             if rows > 1
                                 && ui
@@ -245,6 +441,137 @@ impl EditorState {
                 }
             });
         });
+        // selecting cells: row grip, column strip, shift-click, drag from one cell to another
+        let hit = |p: egui::Pos2| -> Option<(usize, usize)> {
+            (0..rows).flat_map(|r| (0..cols).map(move |c| (r, c))).find(|&(r, c)| cell_rects[r][c].contains(p))
+        };
+        if let Some(r) = grip_clicked {
+            self.select_cells(&tctx, bid, (r, 0), (r, cols - 1));
+        }
+        if let Some(c) = strip_clicked {
+            self.select_cells(&tctx, bid, (0, c), (rows - 1, c));
+        }
+        let (pressed, down, shift, pos) =
+            tctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.modifiers.shift, i.pointer.interact_pos()));
+        let on_bar = self.table_bar_rect.zip(pos).is_some_and(|(r, p)| r.contains(p));
+        if pressed && !on_bar {
+            if let Some(at) = pos.and_then(hit) {
+                match self.table_last.filter(|l| l.0 == bid) {
+                    Some((_, lr, lc)) if shift => self.select_cells(&tctx, bid, (lr, lc), at),
+                    _ => {
+                        self.table_press = Some((bid, at.0, at.1));
+                        if self.table_sel.is_some_and(|s| s.0 == bid) {
+                            self.table_sel = None;
+                        }
+                    }
+                }
+            }
+        }
+        if down {
+            if let (Some((pb, pr, pc)), Some(at)) = (self.table_press, pos.and_then(hit)) {
+                if pb == bid && (pr, pc) != at {
+                    self.select_cells(&tctx, bid, (pr, pc), at);
+                }
+            }
+        } else if self.table_press.is_some_and(|p| p.0 == bid) {
+            self.table_press = None;
+        }
+        // an Escape inside a cell selects that cell
+        if let Some((r, c)) = focused_cell {
+            if tctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+                self.select_cells(&tctx, bid, (r, c), (r, c));
+            }
+        }
+        // selection tint
+        let sel_now = self.table_sel.filter(|s| s.0 == bid).map(|(_, a, b)| {
+            (a.0.min(b.0).min(rows - 1), a.1.min(b.1).min(cols - 1), a.0.max(b.0).min(rows - 1), a.1.max(b.1).min(cols - 1))
+        });
+        let mut bar_at: Option<Rect> = None;
+        if let Some((r0, c0, r1, c1)) = sel_now {
+            let area = cell_rects[r0][c0].union(cell_rects[r1][c1]);
+            ui.painter().rect_filled(area, 0.0, pal.accent.gamma_multiply(0.16));
+            ui.painter().rect_stroke(area, 0.0, Stroke::new(1.5, pal.accent), egui::StrokeKind::Inside);
+            bar_at = Some(area);
+        } else if let Some((tb, r, c, _, _)) = self.table_range {
+            if tb == bid && r < rows && c < cols {
+                bar_at = Some(cell_rects[r][c]);
+            }
+        }
+        let mut applied: Option<CellFormat> = None;
+        if let Some(at) = bar_at {
+            let lang = env.lang;
+            let menu = self.table_menu;
+            let mut open_menu: Option<u8> = None;
+            let area = egui::Area::new(Id::unique(("table-bar", bid)))
+                .order(egui::Order::Foreground)
+                .fixed_pos(egui::pos2(at.min.x.max(4.0), (at.min.y - 40.0 - if menu > 0 { 32.0 } else { 0.0 }).max(4.0)))
+                .show(&tctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        if menu > 0 {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                let r = ui.button("×").on_hover_text(tr(lang, "color_text_default"));
+                                if r.clicked() {
+                                    applied = Some(if menu == 1 { CellFormat::Color(None) } else { CellFormat::Fill(None) });
+                                }
+                                for name in blocks::BLOCK_COLORS {
+                                    let dot = pal.option_tokens(name).2;
+                                    let (rect, r) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::click());
+                                    let r = r.on_hover_text(tr(lang, &format!("color_{name}")));
+                                    ui.painter().circle_filled(rect.center(), if r.hovered() { 9.0 } else { 7.5 }, dot);
+                                    if r.clicked() {
+                                        applied = Some(if menu == 1 {
+                                            CellFormat::Color(Some(name))
+                                        } else {
+                                            CellFormat::Fill(Some(name))
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            let items: [(RichText, inline::StyleKind, &str); 5] = [
+                                (RichText::new("B").strong(), inline::StyleKind::Bold, "fmt_bold"),
+                                (RichText::new("I").italics(), inline::StyleKind::Italic, "fmt_italic"),
+                                (RichText::new("U").underline(), inline::StyleKind::Underline, "fmt_underline"),
+                                (RichText::new("S").strikethrough(), inline::StyleKind::Strike, "fmt_strike"),
+                                (RichText::new("</>").monospace(), inline::StyleKind::Code, "fmt_code"),
+                            ];
+                            for (label, kind, tip) in items {
+                                if ui.button(label).on_hover_text(tr(lang, tip)).clicked() {
+                                    applied = Some(CellFormat::Style(kind));
+                                }
+                            }
+                            ui.separator();
+                            if ui
+                                .button(RichText::new("A").color(pal.accent))
+                                .on_hover_text(tr(lang, "color_text_title"))
+                                .clicked()
+                            {
+                                open_menu = Some(if menu == 1 { 0 } else { 1 });
+                            }
+                            if ui.button("▨").on_hover_text(tr(lang, "table_fill")).clicked() {
+                                open_menu = Some(if menu == 2 { 0 } else { 2 });
+                            }
+                        });
+                    });
+                });
+            self.table_bar_rect = Some(area.response.rect);
+            if let Some(m) = open_menu {
+                self.table_menu = m;
+            }
+        } else {
+            self.table_bar_rect = None;
+            self.table_menu = 0;
+        }
+        if let Some(f) = applied {
+            let target = if sel_now.is_some() { None } else { self.table_range.map(|t| (t.1, t.2)) };
+            self.apply_cell_format(&tctx, &mut cells, bid, target, &rect_cells, f);
+            if !matches!(f, CellFormat::Style(_)) {
+                self.table_menu = 0;
+            }
+        }
         if let Some(r) = drop_row {
             cells.remove(r);
         }

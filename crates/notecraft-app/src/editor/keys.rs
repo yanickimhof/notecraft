@@ -277,6 +277,8 @@ impl EditorState {
                 self.focus = Some((bid, Caret::At(c)));
                 self.record(env.key, &snap, Some(&format!("t{bid}")));
                 out.changed = true;
+            } else if !visible_after {
+                self.delete_at_end(blocks, i, env, out);
             }
             return;
         }
@@ -735,6 +737,30 @@ impl EditorState {
                 blocks.remove(p);
                 self.focus = Some((b.id, Caret::Start));
             }
+        }
+        self.record(env.key, &before, None);
+        out.changed = true;
+    }
+
+    /// Delete at the end of a line: the next line moves up and joins this one.
+    pub(super) fn delete_at_end(&mut self, blocks: &mut Vec<Block>, i: usize, env: &Env, out: &mut Output) {
+        let hidden = blocks::hidden_by_toggles(blocks);
+        let Some(n) = (i + 1..blocks.len()).find(|j| !hidden[*j]) else { return };
+        let before = blocks.clone();
+        let id = blocks[i].id;
+        if blocks[n].kind.has_rich_text() {
+            let join = char_len(&blocks[i].text);
+            let tail = blocks[n].text.clone();
+            blocks[i].text.push_str(&tail);
+            blocks.remove(n);
+            self.focus = Some((id, Caret::At(join)));
+        } else if blocks[i].text.is_empty() {
+            // an empty line before a picture, a divider...: the empty line goes
+            blocks.remove(i);
+            self.sel_anchor = None;
+            self.selected = Some(blocks[i.min(blocks.len() - 1)].id);
+        } else {
+            return;
         }
         self.record(env.key, &before, None);
         out.changed = true;

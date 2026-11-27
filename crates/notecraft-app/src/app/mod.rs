@@ -926,6 +926,30 @@ impl NcApp {
         }
     }
 
+    /// Open the page as an email draft in the system's mail application (Mail, Outlook...), formatting kept.
+    pub fn email_page(&mut self, doc: &DocId) {
+        self.flush_save();
+        let Some(ws) = &self.ws else { return };
+        let dir = std::env::temp_dir().join("NoteCraft-mail");
+        match import_export::email_draft(ws, doc, &dir) {
+            Ok(path) => {
+                #[cfg(target_os = "macos")]
+                let ok = std::process::Command::new("open").arg(&path).status().is_ok_and(|s| s.success());
+                #[cfg(not(target_os = "macos"))]
+                let ok = false;
+                if ok {
+                    let msg = self.t("email_opened").to_string();
+                    self.notify(msg);
+                } else {
+                    reveal(&path);
+                    let msg = format!("{} {}", self.t("exported"), path.display());
+                    self.notify(msg);
+                }
+            }
+            Err(e) => self.notify_error("export", &e),
+        }
+    }
+
     pub fn export_workspace(&mut self) {
         self.flush_save();
         let Some(dir) = rfd::FileDialog::new().set_title(self.t("export_workspace")).pick_folder() else { return };
