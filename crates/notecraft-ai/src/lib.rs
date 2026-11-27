@@ -306,9 +306,19 @@ pub fn is_transient(e: &AiError) -> bool {
 
 /// [`complete`] with the retry rule for transient errors.
 pub fn complete_with_retry(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String, AiError> {
+    complete_with_retry_progress(engine, prompt, t, &std::sync::atomic::AtomicUsize::new(0))
+}
+
+/// [`complete_with_retry`] reporting the characters received (see [`complete_progress`]).
+pub fn complete_with_retry_progress(
+    engine: &Engine,
+    prompt: &Prompt,
+    t: Timeouts,
+    progress: &std::sync::atomic::AtomicUsize,
+) -> Result<String, AiError> {
     let mut last = AiError::Timeout;
     for attempt in 0..RETRY_ATTEMPTS {
-        match complete(engine, prompt, t) {
+        match complete_progress(engine, prompt, t, progress) {
             Ok(s) => return Ok(s),
             Err(e) if is_transient(&e) && attempt + 1 < RETRY_ATTEMPTS => {
                 last = e;
@@ -539,7 +549,8 @@ pub fn ollama_body(model: &str, p: &Prompt) -> Value {
     let num_ctx = (chars / 3 + 3072).clamp(8192, 32768);
     json!({
         "model": model,
-        "stream": false,
+        // streamed, so the app can show progress and a stalled model is noticed
+        "stream": true,
         // reasoning models (qwen3, deepseek-r1...) otherwise spend minutes "thinking" before answering
         "think": false,
         "keep_alive": "30m",
@@ -614,6 +625,53 @@ fn error_message(body: &str) -> String {
 
 /// Ask the engine; returns the answer text (Markdown).
 pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String, AiError> {
+    complete_progress(engine, prompt, t, &std::sync::atomic::AtomicUsize::new(0))
+}
+
+/// The text of a streamed Ollama answer (one JSON object per line); `progress` holds the number of
+/// characters received so far.
+fn read_ollama_stream(
+    resp: &mut ureq::http::Response<ureq::Body>,
+    progress: &std::sync::atomic::AtomicUsize,
+) -> Result<String, AiError> {
+    use std::io::BufRead;
+    let mut out = String::new();
+    let reader = std::io::BufReader::new(resp.body_mut().as_reader());
+    for line in reader.lines() {
+        let line = line.map_err(|e| match e.kind() {
+            std::io::ErrorKind::TimedOut => AiError::Timeout,
+            _ => AiError::Network(e.to_string()),
+        })?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let v: Value = serde_json::from_str(&line).map_err(|e| AiError::BadResponse(e.to_string()))?;
+        if let Some(e) = v["error"].as_str() {
+            return Err(AiError::Api(500, e.to_string()));
+        }
+        if let Some(c) = v["message"]["content"].as_str() {
+            out.push_str(c);
+            progress.store(out.chars().count(), std::sync::atomic::Ordering::Relaxed);
+        }
+        if v["done"] == true {
+            break;
+        }
+    }
+    let out = out.trim().to_string();
+    if out.is_empty() {
+        return Err(AiError::BadResponse("no message content".into()));
+    }
+    Ok(out)
+}
+
+/// [`complete`] that reports, while a local model writes, how many characters have arrived.
+pub fn complete_progress(
+    engine: &Engine,
+    prompt: &Prompt,
+    t: Timeouts,
+    progress: &std::sync::atomic::AtomicUsize,
+) -> Result<String, AiError> {
+    progress.store(0, std::sync::atomic::Ordering::Relaxed);
     match engine {
         Engine::Ollama { url, model } => {
             if model.trim().is_empty() {
@@ -632,6 +690,9 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
                 .send_json(ollama_body(model, prompt))
                 .map_err(|e| map_err(e, Some(&base)))?;
             let status = resp.status().as_u16();
+            if status == 200 {
+                return read_ollama_stream(&mut resp, progress);
+            }
             let body = resp.body_mut().read_to_string().map_err(|e| map_err(e, Some(&base)))?;
             match status {
                 200 => parse_ollama(&body),
@@ -825,7 +886,7 @@ mod tests {
         assert!(req.starts_with("POST /api/chat"));
         let body: Value = serde_json::from_str(req.split("\r\n\r\n").nth(1).unwrap()).unwrap();
         assert_eq!(body["model"], "llama3.2");
-        assert_eq!(body["stream"], false);
+        assert_eq!(body["stream"], true);
         assert_eq!(body["think"], false);
         assert!(body["options"]["num_ctx"].as_u64().unwrap() >= 8192);
         assert!(body["messages"][1]["content"].as_str().unwrap().contains("book train"));
@@ -945,6 +1006,17 @@ mod tests {
         assert_eq!(list, vec!["gpt-4o".to_string(), "o3-mini".to_string()]);
         assert!(rx.recv().unwrap().to_lowercase().contains("authorization: bearer sk-test"));
         assert!(is_openai_chat_model("chatgpt-4o-latest") && !is_openai_chat_model("omni-moderation-latest"));
+    }
+
+    #[test]
+    fn streamed_local_answers_are_joined_and_counted() {
+        let body = "{\"message\":{\"content\":\"Bon\"},\"done\":false}\n{\"message\":{\"content\":\"jour\"},\"done\":false}\n{\"message\":{\"content\":\"\"},\"done\":true}\n";
+        let (url, _rx) = mock(200, body, 0);
+        let e = Engine::Ollama { url, model: "m".into() };
+        let progress = std::sync::atomic::AtomicUsize::new(0);
+        let out = complete_progress(&e, &prompt(), Timeouts::default(), &progress).unwrap();
+        assert_eq!(out, "Bonjour");
+        assert_eq!(progress.load(std::sync::atomic::Ordering::Relaxed), 7);
     }
 
     #[test]

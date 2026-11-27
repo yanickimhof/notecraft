@@ -10,7 +10,9 @@ use eframe::egui::{self, Color32, CornerRadius, Id, RichText, Vec2};
 use notecraft_ai::{build_prompt, keychain, AiAction, AiError, Engine, Timeouts};
 use notecraft_core::blocks::{self, Block};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -168,6 +170,10 @@ pub struct PullJob {
 
 #[derive(Default)]
 pub struct AiState {
+    /// Progress of the request in flight: parts finished, parts in all, characters of the current part.
+    pub parts_done: Arc<AtomicUsize>,
+    pub parts_total: Arc<AtomicUsize>,
+    pub chars: Arc<AtomicUsize>,
     /// The key box under the AI line of the settings is open.
     pub key_open: bool,
     pub open: bool,
@@ -458,6 +464,10 @@ impl NcApp {
         let mut engine = self.prefs.ai.engine();
         let installed = self.ai.models.clone();
         let (tx, rx) = channel();
+        self.ai.parts_done.store(0, Ordering::Relaxed);
+        self.ai.parts_total.store(prompts.len(), Ordering::Relaxed);
+        self.ai.chars.store(0, Ordering::Relaxed);
+        let (parts_done, chars) = (self.ai.parts_done.clone(), self.ai.chars.clone());
         std::thread::spawn(move || {
             // no model chosen yet: use the first one already installed (never download)
             if let Engine::Ollama { url, model } = &mut engine {
@@ -478,8 +488,11 @@ impl NcApp {
             }
             let mut parts: Vec<String> = Vec::new();
             for prompt in &prompts {
-                match notecraft_ai::complete_with_retry(&engine, prompt, Timeouts::default()) {
-                    Ok(t) => parts.push(t.trim().to_string()),
+                match notecraft_ai::complete_with_retry_progress(&engine, prompt, Timeouts::default(), &chars) {
+                    Ok(t) => {
+                        parts.push(t.trim().to_string());
+                        parts_done.fetch_add(1, Ordering::Relaxed);
+                    }
                     Err(e) => {
                         let _ = tx.send(Err(e));
                         return;
@@ -825,12 +838,22 @@ impl NcApp {
                             ui.horizontal(|ui| {
                                 ui.spinner();
                                 ui.label(
-                                    RichText::new(format!(
-                                        "{} — {} ({}s)",
-                                        tr(lang, a.key()),
-                                        tr(lang, "ai_thinking"),
-                                        started.elapsed().as_secs()
-                                    ))
+                                    RichText::new({
+                                        let total = self.ai.parts_total.load(Ordering::Relaxed);
+                                        let done = self.ai.parts_done.load(Ordering::Relaxed);
+                                        let chars = self.ai.chars.load(Ordering::Relaxed);
+                                        let detail = match (total > 1, chars > 0) {
+                                            (true, _) => format!(" · {}/{total} · {chars}", (done + 1).min(total)),
+                                            (false, true) => format!(" · {chars}"),
+                                            _ => String::new(),
+                                        };
+                                        format!(
+                                            "{} — {} ({}s{detail})",
+                                            tr(lang, a.key()),
+                                            tr(lang, "ai_thinking"),
+                                            started.elapsed().as_secs()
+                                        )
+                                    })
                                     .color(pal.text_secondary),
                                 );
                             });
