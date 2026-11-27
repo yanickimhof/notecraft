@@ -609,7 +609,18 @@ impl NcApp {
                         }
                         self.ai.show_original = false;
                     }
+                    // answers to questions stay in the panel; every other result is applied at once (⌘Z undoes it),
+                    // unless its figures differ from the original, which the person must check first
+                    let auto = !matches!(draft.action, AiAction::Ask(_)) && draft.warning.is_none();
+                    let replace = draft.ctx.selection.is_some() && draft.action.replaces();
                     self.ai.draft = Some(draft);
+                    if auto {
+                        self.accept_draft(replace);
+                        if self.ai.draft.is_none() && self.ai.error.is_none() {
+                            let msg = self.t("ai_applied").to_string();
+                            self.notify(msg);
+                        }
+                    }
                 }
             }
             Ok(Err(e)) => {

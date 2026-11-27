@@ -819,6 +819,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("ai_proofread", "Proofread (spelling, grammar)", "Corriger (orthographe, grammaire)"),
     ("ai_clarify", "Proofread and clarify", "Corriger et clarifier"),
     ("ai_restructure", "Reorganise the notes", "Restructurer les notes"),
+    ("ai_applied", "Done. ⌘Z undoes it.", "Fait. ⌘Z annule."),
     ("ai_replace_page", "Replace the page", "Remplacer la page"),
     ("ai_show_original", "Show original", "Voir l'original"),
     ("ai_show_draft", "Show draft", "Voir le brouillon"),
