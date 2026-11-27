@@ -219,7 +219,10 @@ impl NcApp {
                 ui.painter().rect_filled(rect, 0.0, pal.code_bg);
             }
         }
-        if resp.hovered() || ui.rect_contains_pointer(rect) {
+        // the gallery opens below the banner: keep the buttons (its anchor) alive while it is open
+        let gallery_id = Id::unique("cover-gallery-open");
+        let gallery_open = ui.data(|d| d.get_temp::<bool>(gallery_id)).unwrap_or(false);
+        if resp.hovered() || ui.rect_contains_pointer(rect) || gallery_open {
             let btn_area =
                 egui::Rect::from_min_size(egui::pos2(rect.max.x - 330.0, rect.max.y - 40.0), Vec2::new(320.0, 30.0));
             let mut child = ui.new_child(
@@ -246,7 +249,7 @@ impl NcApp {
                 }
             }
             let change = child.add(style_btn(self.t("change_cover")));
-            egui::Popup::menu(&change).show(|ui| {
+            let gallery = egui::Popup::menu(&change).show(|ui| {
                 ui.set_min_width(300.0);
                 egui::Grid::new("cover-gallery").spacing(Vec2::splat(6.0)).show(ui, |ui| {
                     for (n, (a, b)) in COVERS.iter().enumerate() {
@@ -270,6 +273,7 @@ impl NcApp {
                     }
                 });
             });
+            ui.data_mut(|d| d.insert_temp(gallery_id, gallery.is_some()));
             if let (Some(c), Target::Doc(d), Some(ws)) = (new_cover, target, self.ws.as_mut()) {
                 let _ = ws.set_cover(d, &c);
             }
