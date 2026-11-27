@@ -29,8 +29,9 @@ A workspace is a folder you choose. Each page is a Markdown file inside it, so y
 - Columns (drag a line to the right edge of another to make one), a table of contents, simple tables, web bookmarks and whole databases shown inside a page.
 - Select several lines (⇧↓ or drag the handles) and act on all of them at once: turn into, colour, group in a section, copy, cut, duplicate, move, delete. A text colour and a background colour can be combined.
 - **Page templates**: the **Templates** section of the sidebar holds ordinary pages that you write once and paste into any page with `/` then Template; `{{date}}` becomes today's date. A new workspace starts with one example (meeting minutes) that you can edit or delete. Pick one by clicking its row or with the arrow keys and Enter. They are separate from the meeting templates described below.
+- **Simple tables**: select several cells (drag, shift click, the grip at the left of a row or the arrow above a column) and format them together with the small bar: bold, italic, underline, colours and cell background.
 - Link pages with `[[Page name]]`; the other page shows a backlink.
-- Icons, covers, favourites, trash with restore.
+- Icons (emoji in colour, and the flags of every country, with search), covers, favourites, trash with restore.
 - **Tabs**: ⌘T opens a tab, ⌘-click on a page opens it in a new tab, ⌘W closes it. Tabs come back when you restart.
 - **Presentation**: ⌥⌘P opens the page in your browser exactly as it looks when published, full width. Scroll, zoom with ⌘+ and ⌘−, and press F (or the button at the top right) for full screen. Nothing is sent anywhere.
 - **Reminders**: use the page menu (•••) to set a reminder on a page. The Reminders entry in the sidebar lists them all. A reminder fires while the app is open, or the next time you open it.
@@ -61,6 +62,8 @@ Quick finder with ⌘P and full text search across everything.
 
 ## Get things in and out
 
+- **Send a page by email** (page menu, Export): the default mail app opens a new message with the title as subject, and the formatted page is on the clipboard, ready to paste with ⌘V.
+
 - **Import** from Evernote, Obsidian, Bear, Joplin, Word, HTML, CSV and Markdown (a zip, a file or a folder, recognised automatically). The import runs in the background; skipped items are listed on an "Import report" page.
 - **Export** a page or the whole workspace as Markdown, and a page as PDF, Word or HTML, with its images.
 
@@ -74,6 +77,7 @@ Quick finder with ⌘P and full text search across everything.
 ## Work with AI (optional)
 
 - Summarise, continue, improve or translate text, or ask a question about a page (⌘J).
+- **Review a page**: Proofread (spelling and grammar only), Proofread and clarify, or Reorganise the notes (headings, lists, summary, actions). The result appears as a draft with a Show original switch; nothing changes until you accept, and ⌘Z undoes it. Transcripts, databases, images and code are never sent and come back untouched. With a local model a long page can take a few minutes.
 - Runs on your Mac with Ollama (nothing leaves your computer) or with your own Claude, ChatGPT (OpenAI) or Grok (xAI) API key. Pick the engine with its icon in Settings, then the model from a menu grouped by family. You always see the result first: nothing changes until you click.
 - Connect Claude Desktop or Claude Code (Settings, MCP server) so they can read and edit your notes through MCP, with permissions you choose: read only, read and write, or deletion allowed, and optionally limited to one page tree.
 
@@ -116,7 +120,7 @@ The full list is also in **Settings, Shortcuts**.
 | ⌘/ | Turn into |
 | ⌘↵ | Check a to-do, open a toggle |
 | Esc | Close a menu (keeps your text), or select the block |
-| ⇧↓ in a selection | Select several blocks; ← or → goes back to the text |
+| ⇧↑ ⇧↓ | Extend the text selection to the start or end of the block, then select several blocks; ← or → goes back to the text |
 | ⌥← ⌥→ | Move by word (links included) |
 | Tab ⇧Tab | Indent, outdent |
 | ⇧↵ | Line break inside a block |

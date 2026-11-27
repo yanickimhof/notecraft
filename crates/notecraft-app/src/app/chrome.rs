@@ -180,7 +180,12 @@ impl NcApp {
                 let short: String =
                     if text.chars().count() > 28 { text.chars().take(26).collect::<String>() + "…" } else { text };
                 let color = if k + 1 == n { pal.text } else { pal.text_secondary };
-                if widgets::subtle_button(ui, RichText::new(short).size(13.5).color(color), &pal).clicked() {
+                let (shown, flag) = crate::flags::reserve(&short);
+                let crumb = widgets::subtle_button(ui, RichText::new(shown).size(13.5).color(color), &pal);
+                if let Some(code) = flag {
+                    crate::flags::paint_in_button(ui, &crumb, code, 13.5);
+                }
+                if crumb.clicked() {
                     go = Some(target);
                 }
             }
@@ -525,7 +530,13 @@ impl NcApp {
                     ui.horizontal(|ui| {
                         let icon = if icon.is_empty() { "📄" } else { icon.as_str() };
                         let title = if title.is_empty() { tr(lang, "untitled") } else { title.as_str() };
-                        ui.label(format!("{icon}  {title}"));
+                        {
+                            let (shown, flag) = crate::flags::reserve(&format!("{icon} {title}"));
+                            let lbl = ui.label(shown);
+                            if let Some(code) = flag {
+                                crate::flags::paint_in_button(ui, &lbl, code, 14.0);
+                            }
+                        }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button(tr(lang, "unarchive")).clicked() {
                                 unarchive = Some(id.clone());
@@ -545,7 +556,13 @@ impl NcApp {
                     ui.horizontal(|ui| {
                         let icon = if icon.is_empty() { "📄" } else { icon.as_str() };
                         let title = if title.is_empty() { tr(lang, "untitled") } else { title.as_str() };
-                        ui.label(format!("{icon}  {title}"));
+                        {
+                            let (shown, flag) = crate::flags::reserve(&format!("{icon} {title}"));
+                            let lbl = ui.label(shown);
+                            if let Some(code) = flag {
+                                crate::flags::paint_in_button(ui, &lbl, code, 14.0);
+                            }
+                        }
                         ui.label(RichText::new(widgets::relative_time(when, lang)).size(12.0).color(pal.text_faint));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button(RichText::new(tr(lang, "delete_forever")).color(pal.danger)).clicked() {

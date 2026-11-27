@@ -170,7 +170,6 @@ impl Layout {
         lines
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn paragraph(&mut self, words: Vec<Word>, x: f32, width: f32, size: f32, lead: f32, deco: &Deco) {
         let lines = Self::wrap(words, width, size);
         let n = lines.len();
@@ -473,6 +472,7 @@ fn layout(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec
                 l.paragraph(ws, x + 12.0, w - 24.0, 9.5, 14.0, &deco);
                 l.y += 12.0;
             }
+            Kind::Table(_) => {}
             Kind::Divider => {
                 l.ensure(20.0);
                 l.y += 8.0;

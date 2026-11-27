@@ -271,6 +271,24 @@ pub(super) fn meeting_card(
                                     if r.clicked() {
                                         editing = Some((name.clone(), name.clone(), true));
                                     }
+                                    // right click: merge this speaker into another one (a voice split in two)
+                                    if names.len() > 1 {
+                                        r.context_menu(|ui| {
+                                            for other in names.iter().filter(|n| *n != name) {
+                                                if ui
+                                                    .button(format!("{} {other}", tr(lang, "merge_speaker_into")))
+                                                    .clicked()
+                                                {
+                                                    act = Some(crate::meeting::MeetingAction::RenameSpeaker(
+                                                        bid,
+                                                        name.clone(),
+                                                        other.clone(),
+                                                    ));
+                                                    ui.close();
+                                                }
+                                            }
+                                        });
+                                    }
                                 }
                             }
                         });

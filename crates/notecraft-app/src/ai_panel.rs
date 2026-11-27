@@ -579,12 +579,20 @@ impl NcApp {
                 let c = self.ai.ctx.clone();
                 self.ai.running = None;
                 if let Some(c) = c {
-                    let mut draft = Draft { action: action.clone(), text, ctx: c, review: None, original: String::new(), warning: None };
+                    let mut draft = Draft {
+                        action: action.clone(),
+                        text,
+                        ctx: c,
+                        review: None,
+                        original: String::new(),
+                        warning: None,
+                    };
                     if action.is_review() && !self.ai.review_md.is_empty() {
                         let lang = self.prefs.lang;
                         let kept = std::mem::take(&mut self.ai.review_kept);
                         let md = self.ai.review_md.clone();
-                        let old = self.ws.as_mut().and_then(|ws| NcApp::blocks_mut(ws, &draft.ctx.target).map(|b| b.clone()));
+                        let old =
+                            self.ws.as_mut().and_then(|ws| NcApp::blocks_mut(ws, &draft.ctx.target).map(|b| b.clone()));
                         match old.and_then(|o| crate::ai_review::restore(&o, &kept, &draft.text)) {
                             Some(new) => {
                                 if crate::ai_review::numbers(&md) != crate::ai_review::numbers(&draft.text) {
@@ -754,7 +762,11 @@ impl NcApp {
                                 .show(ui, |ui| {
                                     ui.set_width(width - 20.0);
                                     egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                                        let shown = if self.ai.show_original && !d.original.is_empty() { &d.original } else { &d.text };
+                                        let shown = if self.ai.show_original && !d.original.is_empty() {
+                                            &d.original
+                                        } else {
+                                            &d.text
+                                        };
                                         draft_view(ui, &pal, shown, width - 40.0);
                                     });
                                 });
@@ -771,7 +783,8 @@ impl NcApp {
                                     if ui.add(primary(tr(lang, "ai_replace_page"))).clicked() {
                                         accept = Some(true);
                                     }
-                                    let label = if self.ai.show_original { "ai_show_draft" } else { "ai_show_original" };
+                                    let label =
+                                        if self.ai.show_original { "ai_show_draft" } else { "ai_show_original" };
                                     if ui.button(tr(lang, label)).clicked() {
                                         self.ai.show_original = !self.ai.show_original;
                                     }

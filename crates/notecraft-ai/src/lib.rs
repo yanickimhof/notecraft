@@ -622,7 +622,11 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
             guard_local(url)?;
             let base = trim_url(url);
             // a local model can be slow (cold start, long page): wait longer than for a cloud API
-            let t = if t.total >= Duration::from_secs(60) { Timeouts { total: t.total.max(Duration::from_secs(900)), ..t } } else { t };
+            let t = if t.total >= Duration::from_secs(60) {
+                Timeouts { total: t.total.max(Duration::from_secs(900)), ..t }
+            } else {
+                t
+            };
             let mut resp = agent(t)
                 .post(format!("{base}/api/chat"))
                 .send_json(ollama_body(model, prompt))

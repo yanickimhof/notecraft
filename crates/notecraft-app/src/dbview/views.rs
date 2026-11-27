@@ -5,7 +5,6 @@ use super::*;
 impl DbUi {
     // ------------------------------------------------------------------- table
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn table(
         &mut self,
         ui: &mut Ui,
@@ -261,7 +260,6 @@ impl DbUi {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn title_cell(
         &mut self,
         ui: &mut Ui,
@@ -314,7 +312,6 @@ impl DbUi {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn property_menu(
         &mut self,
         ui: &mut Ui,
@@ -444,7 +441,6 @@ impl DbUi {
 
     // ------------------------------------------------------------------- board
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn board(
         &mut self,
         ui: &mut Ui,
@@ -560,7 +556,6 @@ impl DbUi {
 
     // ----------------------------------------------------------------- gallery
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn gallery(
         &mut self,
         ui: &mut Ui,
@@ -647,7 +642,6 @@ impl DbUi {
 
     // ---------------------------------------------------------------- calendar
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn calendar(
         &mut self,
         ui: &mut Ui,
@@ -836,7 +830,6 @@ impl DbUi {
 
     // ---------------------------------------------------------------- timeline
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn timeline(
         &mut self,
         ui: &mut Ui,
@@ -996,7 +989,6 @@ impl DbUi {
 
     // -------------------------------------------------------------------- list
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn list(
         &mut self,
         ui: &mut Ui,
@@ -1060,7 +1052,6 @@ impl DbUi {
     }
 
     /// Property list on top of a row page (or a template when `template`).
-    #[allow(clippy::too_many_arguments)]
     pub fn row_properties(
         &mut self,
         ui: &mut Ui,

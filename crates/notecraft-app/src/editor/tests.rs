@@ -640,3 +640,129 @@ fn shift_arrow_extends_the_selection_by_a_letter() {
     }
     assert_eq!(h.state().1[0].text, "abXef");
 }
+
+fn outline() -> Vec<Block> {
+    let mut v = notecraft_core::blocks::from_markdown("Ang\n\nBrnding\n\nRAG :\n\nMiss\n\nTail");
+    // index: 0 Ang, 1 Brnding, 2 RAG, 3 child, 4 child, 5 Miss, 6 Tail
+    v.insert(3, Block::paragraph("child one"));
+    v.insert(4, Block::paragraph("child two"));
+    v[3].depth = 1;
+    v[4].depth = 1;
+    v
+}
+
+#[test]
+fn block_selection_grows_and_shrinks_one_block_at_a_time_over_indented_lines() {
+    let blocks = outline();
+    let ids: Vec<u64> = blocks.iter().map(|b| b.id).collect();
+    let mut st = EditorState { selected: Some(ids[0]), ..EditorState::default() };
+    let mut ends = Vec::new();
+    // growing downwards: the end of the range never goes back
+    for _ in 0..6 {
+        let i = blocks.iter().position(|b| Some(b.id) == st.selected).unwrap();
+        st.extend_block_selection(&blocks, i, true);
+        ends.push(st.selected_range(&blocks).unwrap().1);
+    }
+    assert!(ends.windows(2).all(|w| w[0] <= w[1]), "the highlight went back: {ends:?}");
+    assert_eq!(st.selected_range(&blocks).unwrap(), (0, blocks.len()));
+    // and shrinking back up: the end never grows
+    let mut ends = Vec::new();
+    for _ in 0..6 {
+        let i = blocks.iter().position(|b| Some(b.id) == st.selected).unwrap();
+        st.extend_block_selection(&blocks, i, false);
+        ends.push(st.selected_range(&blocks).unwrap().1);
+    }
+    assert!(ends.windows(2).all(|w| w[0] >= w[1]), "the highlight grew while shrinking: {ends:?}");
+}
+
+#[test]
+fn shift_down_on_a_parent_selects_its_children_and_the_next_block() {
+    let blocks = outline();
+    let mut st = EditorState { selected: Some(blocks[2].id), ..EditorState::default() }; // RAG : (two children)
+    st.extend_block_selection(&blocks, 2, true);
+    // anchor RAG, end Miss: RAG, both children and Miss
+    assert_eq!(st.selected_range(&blocks).unwrap(), (2, 6));
+}
+
+#[test]
+fn shift_up_from_a_child_goes_to_the_line_above_and_keeps_the_anchor() {
+    let blocks = outline();
+    let mut st = EditorState { selected: Some(blocks[4].id), ..EditorState::default() };
+    st.extend_block_selection(&blocks, 4, false);
+    assert_eq!(st.selected_range(&blocks).unwrap(), (3, 5));
+    st.extend_block_selection(&blocks, 3, false);
+    assert_eq!(st.selected_range(&blocks).unwrap(), (2, 5));
+}
+
+fn settle(h: &mut egui_kittest::Harness<'static, (EditorState, Vec<Block>)>) {
+    for _ in 0..4 {
+        h.run();
+    }
+}
+
+fn two_long_lines() -> (Vec<Block>, u64, u64) {
+    let a = Block::new(BlockKind::Paragraph, "abcdefghij");
+    let b = Block::new(BlockKind::Paragraph, "klmnopqrst");
+    let (aid, bid) = (a.id, b.id);
+    (vec![a, b], aid, bid)
+}
+
+#[test]
+fn right_arrow_at_the_end_of_a_block_goes_to_the_start_of_the_next_one() {
+    let (blocks, aid, _) = two_long_lines();
+    let mut h = editor_harness(blocks);
+    h.state_mut().0.focus = Some((aid, Caret::End));
+    settle(&mut h);
+    h.event(key_event(Key::ArrowRight, egui::Modifiers::NONE));
+    settle(&mut h);
+    h.event(egui::Event::Text("X".into()));
+    settle(&mut h);
+    assert_eq!(h.state().1[1].text, "Xklmnopqrst");
+}
+
+#[test]
+fn left_arrow_at_the_start_of_a_block_goes_to_the_end_of_the_previous_one() {
+    let (blocks, _, bid) = two_long_lines();
+    let mut h = editor_harness(blocks);
+    h.state_mut().0.focus = Some((bid, Caret::Start));
+    settle(&mut h);
+    h.event(key_event(Key::ArrowLeft, egui::Modifiers::NONE));
+    settle(&mut h);
+    h.event(egui::Event::Text("X".into()));
+    settle(&mut h);
+    assert_eq!(h.state().1[0].text, "abcdefghijX");
+}
+
+#[test]
+fn shift_down_in_the_middle_of_the_last_line_first_selects_the_text() {
+    let (blocks, aid, _) = two_long_lines();
+    let mut h = editor_harness(blocks);
+    h.state_mut().0.focus = Some((aid, Caret::At(3)));
+    settle(&mut h);
+    h.event(key_event(Key::ArrowDown, egui::Modifiers::SHIFT));
+    settle(&mut h);
+    assert!(h.state().0.selected.is_none(), "it jumped to block selection before selecting the text");
+    h.event(key_event(Key::ArrowDown, egui::Modifiers::SHIFT));
+    settle(&mut h);
+    assert!(h.state().0.selected.is_some(), "the second press switches to block selection");
+}
+
+#[test]
+fn down_from_a_block_range_lands_below_the_range_and_up_above_it() {
+    let blocks = outline();
+    let ids: Vec<u64> = blocks.iter().map(|b| b.id).collect();
+    let mut h = editor_harness(blocks);
+    h.state_mut().0.selected = Some(ids[2]);
+    h.state_mut().0.sel_anchor = Some(ids[1]); // Brnding .. RAG with its two children
+    settle(&mut h);
+    h.event(key_event(Key::ArrowDown, egui::Modifiers::NONE));
+    settle(&mut h);
+    assert_eq!(h.state().0.selected, Some(ids[5]));
+    assert!(h.state().0.sel_anchor.is_none());
+    h.state_mut().0.selected = Some(ids[4]);
+    h.state_mut().0.sel_anchor = Some(ids[2]);
+    settle(&mut h);
+    h.event(key_event(Key::ArrowUp, egui::Modifiers::NONE));
+    settle(&mut h);
+    assert_eq!(h.state().0.selected, Some(ids[1]));
+}

@@ -178,7 +178,16 @@ impl NcApp {
                                     } else {
                                         r.icon.clone()
                                     };
-                                    child.label(RichText::new(icon).size(17.0));
+                                    match crate::flags::code_of(&icon) {
+                                        Some(code) => {
+                                            let (r, _) =
+                                                child.allocate_exact_size(Vec2::new(24.0, 18.0), egui::Sense::hover());
+                                            crate::flags::paint(&child, r, code);
+                                        }
+                                        None => {
+                                            child.label(RichText::new(icon).size(17.0));
+                                        }
+                                    }
                                     child.vertical(|ui| {
                                         ui.horizontal(|ui| {
                                             let title = if r.title.is_empty() {

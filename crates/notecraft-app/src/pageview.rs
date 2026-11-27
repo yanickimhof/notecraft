@@ -318,7 +318,10 @@ impl NcApp {
             ui.horizontal(|ui| {
                 ui.add_space(GUTTER - 6.0);
                 let flag = crate::flags::code_of(&icon);
-                let r = ui.add(egui::Button::new(RichText::new(if flag.is_some() { "" } else { &icon }).size(60.0)).min_size(Vec2::splat(84.0)));
+                let r = ui.add(
+                    egui::Button::new(RichText::new(if flag.is_some() { "" } else { &icon }).size(60.0))
+                        .min_size(Vec2::splat(84.0)),
+                );
                 if let Some(code) = flag {
                     crate::flags::paint(ui, r.rect.shrink2(Vec2::new(8.0, 14.0)), code);
                 }

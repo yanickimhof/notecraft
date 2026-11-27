@@ -176,7 +176,12 @@ impl EditorState {
         // Formatting shortcuts act on the text selected in a cell, or on every selected cell.
         let sel_here = self.table_sel.is_some_and(|s| s.0 == bid);
         let sel_rect = self.table_sel.filter(|s| s.0 == bid).map(|(_, a, b)| {
-            (a.0.min(b.0).min(rows - 1), a.1.min(b.1).min(cols - 1), a.0.max(b.0).min(rows - 1), a.1.max(b.1).min(cols - 1))
+            (
+                a.0.min(b.0).min(rows - 1),
+                a.1.min(b.1).min(cols - 1),
+                a.0.max(b.0).min(rows - 1),
+                a.1.max(b.1).min(cols - 1),
+            )
         });
         let mut rect_cells: Vec<(usize, usize)> = Vec::new();
         if let Some((r0, c0, r1, c1)) = sel_rect {
@@ -249,7 +254,8 @@ impl EditorState {
                 self.table_sel = None;
             }
         } else if self.table_range.is_some_and(|t| t.0 == bid) {
-            let over = self.table_bar_rect.zip(tctx.input(|i| i.pointer.interact_pos())).is_some_and(|(r, p)| r.contains(p));
+            let over =
+                self.table_bar_rect.zip(tctx.input(|i| i.pointer.interact_pos())).is_some_and(|(r, p)| r.contains(p));
             if !over {
                 self.table_range = None;
             }
@@ -276,7 +282,10 @@ impl EditorState {
                                     pal.text_faint,
                                 );
                                 if cols > 1 {
-                                    let x = Rect::from_center_size(egui::pos2(r.max.x - 10.0, r.center().y), Vec2::splat(14.0));
+                                    let x = Rect::from_center_size(
+                                        egui::pos2(r.max.x - 10.0, r.center().y),
+                                        Vec2::splat(14.0),
+                                    );
                                     ui.painter().text(
                                         x.center(),
                                         Align2::CENTER_CENTER,
@@ -451,8 +460,9 @@ impl EditorState {
         if let Some(c) = strip_clicked {
             self.select_cells(&tctx, bid, (0, c), (rows - 1, c));
         }
-        let (pressed, down, shift, pos) =
-            tctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.modifiers.shift, i.pointer.interact_pos()));
+        let (pressed, down, shift, pos) = tctx.input(|i| {
+            (i.pointer.primary_pressed(), i.pointer.primary_down(), i.modifiers.shift, i.pointer.interact_pos())
+        });
         let on_bar = self.table_bar_rect.zip(pos).is_some_and(|(r, p)| r.contains(p));
         if pressed && !on_bar {
             if let Some(at) = pos.and_then(hit) {
@@ -484,7 +494,12 @@ impl EditorState {
         }
         // selection tint
         let sel_now = self.table_sel.filter(|s| s.0 == bid).map(|(_, a, b)| {
-            (a.0.min(b.0).min(rows - 1), a.1.min(b.1).min(cols - 1), a.0.max(b.0).min(rows - 1), a.1.max(b.1).min(cols - 1))
+            (
+                a.0.min(b.0).min(rows - 1),
+                a.1.min(b.1).min(cols - 1),
+                a.0.max(b.0).min(rows - 1),
+                a.1.max(b.1).min(cols - 1),
+            )
         });
         let mut bar_at: Option<Rect> = None;
         if let Some((r0, c0, r1, c1)) = sel_now {
@@ -504,7 +519,10 @@ impl EditorState {
             let mut open_menu: Option<u8> = None;
             let area = egui::Area::new(Id::unique(("table-bar", bid)))
                 .order(egui::Order::Foreground)
-                .fixed_pos(egui::pos2(at.min.x.max(4.0), (at.min.y - 40.0 - if menu > 0 { 32.0 } else { 0.0 }).max(4.0)))
+                .fixed_pos(egui::pos2(
+                    at.min.x.max(4.0),
+                    (at.min.y - 40.0 - if menu > 0 { 32.0 } else { 0.0 }).max(4.0),
+                ))
                 .show(&tctx, |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
                         if menu > 0 {
@@ -512,7 +530,8 @@ impl EditorState {
                                 ui.spacing_mut().item_spacing.x = 4.0;
                                 let r = ui.button("×").on_hover_text(tr(lang, "color_text_default"));
                                 if r.clicked() {
-                                    applied = Some(if menu == 1 { CellFormat::Color(None) } else { CellFormat::Fill(None) });
+                                    applied =
+                                        Some(if menu == 1 { CellFormat::Color(None) } else { CellFormat::Fill(None) });
                                 }
                                 for name in blocks::BLOCK_COLORS {
                                     let dot = pal.option_tokens(name).2;

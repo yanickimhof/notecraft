@@ -811,6 +811,14 @@ pub fn email_draft(ws: &Workspace, doc: &DocId, dest: &Path) -> Result<PathBuf> 
     Ok(path)
 }
 
+/// What an email needs from a page: its subject, the formatted HTML body and the plain-text version.
+pub fn email_parts(ws: &Workspace, doc: &DocId) -> Result<(String, String, String)> {
+    let blocks = ws.blocks(doc).ok_or_else(|| crate::Error::NotFound("page".into()))?;
+    let read = |rel: &str| std::fs::read(ws.asset_path(rel)).ok();
+    let subject: String = ws.title(doc).chars().filter(|c| !c.is_control()).collect();
+    Ok((subject, crate::render::email_html(blocks, &read), crate::blocks::to_markdown(blocks)))
+}
+
 /// Export every live top-level page and database into `dest`.
 pub fn export_workspace(ws: &Workspace, dest: &Path) -> Result<usize> {
     let roots: Vec<DocId> = ws.children(None).into_iter().map(|t| t.doc).collect();

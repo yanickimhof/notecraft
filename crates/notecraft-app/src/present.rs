@@ -252,7 +252,6 @@ impl NcApp {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw_block(
     ui: &mut egui::Ui,
     b: &Block,

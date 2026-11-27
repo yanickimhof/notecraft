@@ -138,7 +138,6 @@ pub(super) fn set_row_value(
 }
 
 /// Editor for one property value of a row.
-#[allow(clippy::too_many_arguments)]
 pub fn cell_editor(
     ui: &mut Ui,
     ws: &mut Workspace,
@@ -467,7 +466,6 @@ pub(super) fn toggle_option(p: &Property, selected: &[String], name: &str) -> Pr
 }
 
 /// Default values of a template (simple widgets; saved as the template file).
-#[allow(clippy::too_many_arguments)]
 pub(super) fn template_cell(
     ui: &mut Ui,
     ws: &mut Workspace,
@@ -728,7 +726,6 @@ pub(super) fn rollup_menus(
 
 /// The small menu of one option: rename, colour, group (status) and delete. A rename or a delete is carried
 /// to every row that holds the option.
-#[allow(clippy::too_many_arguments)]
 fn option_menu(
     ui: &mut Ui,
     ws: &mut Workspace,

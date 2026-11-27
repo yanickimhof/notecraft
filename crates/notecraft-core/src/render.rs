@@ -55,6 +55,8 @@ pub(crate) enum Kind {
     Divider,
     Image(String),
     File,
+    /// A table as rows of cells (cell fill name, runs); only built for HTML, other exports get one line per row.
+    Table(Vec<Vec<(Option<String>, String)>>),
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +87,11 @@ fn plain(text: &str) -> Vec<Run> {
 }
 
 pub(crate) fn items(blocks: &[Block]) -> Vec<Item> {
+    items_with(blocks, false)
+}
+
+/// `items`, with tables kept as tables (for HTML) instead of one line per row.
+pub(crate) fn items_with(blocks: &[Block], tables: bool) -> Vec<Item> {
     let mut counters: Vec<u32> = Vec::new();
     let mut out = Vec::new();
     for b in blocks {
@@ -128,6 +135,27 @@ pub(crate) fn items(blocks: &[Block]) -> Vec<Item> {
             });
             continue;
         }
+        if b.kind == BlockKind::Table && tables {
+            let rows = crate::blocks::table_cells(&b.text)
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|c| {
+                            let (fill, text) = crate::inline::split_fill(c);
+                            (fill.map(str::to_string), html_runs(&runs_of(text)))
+                        })
+                        .collect()
+                })
+                .collect();
+            out.push(Item {
+                kind: Kind::Table(rows),
+                marker: Marker::None,
+                depth: b.depth,
+                runs: Vec::new(),
+                color: String::new(),
+            });
+            continue;
+        }
         if b.kind == BlockKind::Table {
             // Exports show a table as one line per row, cells separated by a bar.
             for row in crate::blocks::table_cells(&b.text) {
@@ -135,7 +163,9 @@ pub(crate) fn items(blocks: &[Block]) -> Vec<Item> {
                     kind: Kind::Para,
                     marker: Marker::None,
                     depth: b.depth,
-                    runs: plain(&row.iter().map(|c| crate::inline::split_fill(c).1).collect::<Vec<_>>().join("   |   ")),
+                    runs: plain(
+                        &row.iter().map(|c| crate::inline::split_fill(c).1).collect::<Vec<_>>().join("   |   "),
+                    ),
                     color: String::new(),
                 });
             }
@@ -305,7 +335,7 @@ pub fn base64(data: &[u8]) -> String {
 /// The blocks as HTML elements, without the page around them (for the clipboard and emails).
 pub fn html_body(blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>) -> String {
     let mut body = String::new();
-    for it in items(blocks) {
+    for it in items_with(blocks, true) {
         let mut style = String::new();
         if it.depth > 0 {
             style.push_str(&format!("margin-left:{}em;", f32::from(it.depth) * 1.5));
@@ -345,6 +375,26 @@ pub fn html_body(blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>)
                 body.push_str(&format!("<pre><code class=\"lang-{}\">{}</code></pre>\n", escape(lang), escape(&code)));
             }
             Kind::Divider => body.push_str("<hr>\n"),
+            Kind::Table(rows) => {
+                body.push_str(&format!("<table{attr} style=\"border-collapse:collapse;margin:.6em 0\">\n"));
+                for (ri, row) in rows.iter().enumerate() {
+                    body.push_str("<tr>");
+                    for (fill, cell) in row {
+                        let bg = fill
+                            .as_deref()
+                            .and_then(|f| css_color(&format!("bg-{f}")))
+                            .map(|(hex, _)| hex)
+                            .or(if ri == 0 { Some("#f4f3f3") } else { None });
+                        let weight = if ri == 0 { "font-weight:600;" } else { "" };
+                        let bg = bg.map(|h| format!("background:{h};")).unwrap_or_default();
+                        body.push_str(&format!(
+                            "<td style=\"border:1px solid #ddd;padding:4px 8px;vertical-align:top;{weight}{bg}\">{cell}</td>"
+                        ));
+                    }
+                    body.push_str("</tr>\n");
+                }
+                body.push_str("</table>\n");
+            }
             Kind::Image(path) => {
                 let caption = it.runs.iter().map(|r| r.text.as_str()).collect::<String>();
                 let src = if path.starts_with("http://") || path.starts_with("https://") {
@@ -368,6 +418,14 @@ pub fn html_body(blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>)
     body
 }
 
+/// The page as a formatted HTML document for an email body.
+pub fn email_html(blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>) -> String {
+    format!(
+        "<html><head><meta charset=\"utf-8\"><style>body{{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#222}}p{{margin:0 0 .6em}}h2,h3,h4{{margin:1em 0 .4em}}blockquote{{margin:.6em 0;padding-left:.8em;border-left:3px solid #ccc;color:#555}}pre{{background:#f4f3f3;padding:8px;border-radius:4px}}.m{{color:#888}}.callout{{background:#f0efed;padding:8px 10px;border-radius:6px;margin:.6em 0}}img{{max-width:100%}}</style></head><body>{}</body></html>",
+        html_body(blocks, read_asset)
+    )
+}
+
 /// An unsent email (`.eml`) holding the page: formatted HTML and a Markdown text version. Opened with the
 /// system's mail application (Mail, Outlook...), it shows as a draft ready to address and send.
 pub fn to_eml(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Option<Vec<u8>>) -> String {
@@ -376,10 +434,7 @@ pub fn to_eml(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Option
         b.as_bytes().chunks(76).map(|c| String::from_utf8_lossy(c).into_owned()).collect::<Vec<_>>().join("\r\n")
     };
     let subject: String = title.chars().filter(|c| !c.is_control()).collect();
-    let html = format!(
-        "<html><head><meta charset=\"utf-8\"><style>body{{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#222}}p{{margin:0 0 .6em}}h2,h3,h4{{margin:1em 0 .4em}}blockquote{{margin:.6em 0;padding-left:.8em;border-left:3px solid #ccc;color:#555}}pre{{background:#f4f3f3;padding:8px;border-radius:4px}}.m{{color:#888}}.callout{{background:#f0efed;padding:8px 10px;border-radius:6px;margin:.6em 0}}img{{max-width:100%}}</style></head><body>{}</body></html>",
-        html_body(blocks, read_asset)
-    );
+    let html = email_html(blocks, read_asset);
     let text = crate::blocks::to_markdown(blocks);
     let boundary = "=_notecraft_alt_boundary";
     format!(
@@ -537,6 +592,7 @@ pub fn to_docx(title: &str, blocks: &[Block], read_asset: &dyn Fn(&str) -> Optio
             runs.push_str(&docx_run(&marker, &Style::default(), None, size, false));
         }
         match &it.kind {
+            Kind::Table(_) => {}
             Kind::Divider => {
                 body.push_str(&para(
                     "<w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"BBBBBB\"/></w:pBdr>",
@@ -779,6 +835,16 @@ mod tests {
 mod eml_tests {
     use super::*;
     use crate::blocks::{Block, BlockKind};
+
+    #[test]
+    fn a_table_is_sent_as_a_real_table_with_its_cell_fills() {
+        let blocks = vec![Block::new(BlockKind::Table, "| Item | Price |\n|---|---|\n| Pen | <!--bg:green-->**2** |")];
+        let html = email_html(&blocks, &|_| None);
+        assert!(html.contains("<table") && html.contains("<td") && html.contains("</table>"), "{html}");
+        assert!(html.contains("<strong>2</strong>") || html.contains("<b>2</b>"), "{html}");
+        assert!(html.contains("#edf3ec"), "the cell fill is kept: {html}");
+        assert!(!html.contains("bg:green"), "{html}");
+    }
 
     #[test]
     fn the_email_draft_carries_formatted_html_and_text() {

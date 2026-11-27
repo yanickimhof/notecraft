@@ -298,7 +298,6 @@ impl DbUi {
         actions
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn tabs_and_toolbar(
         &mut self,
         ui: &mut Ui,
@@ -380,7 +379,6 @@ impl DbUi {
         });
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn new_button(
         &mut self,
         ui: &mut Ui,
@@ -492,7 +490,6 @@ impl DbUi {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn filter_menu(
         &mut self,
         ui: &mut Ui,
@@ -519,7 +516,6 @@ impl DbUi {
         });
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn sort_menu(
         &mut self,
         ui: &mut Ui,
@@ -594,7 +590,6 @@ impl DbUi {
         });
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn group_menu(
         &mut self,
         ui: &mut Ui,
@@ -662,7 +657,6 @@ impl DbUi {
         });
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn props_menu(
         &mut self,
         ui: &mut Ui,

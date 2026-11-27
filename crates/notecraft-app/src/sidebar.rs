@@ -343,9 +343,20 @@ impl NcApp {
             );
         } else {
             match crate::flags::code_of(&icon) {
-                Some(code) if crate::flags::paint(ui, egui::Rect::from_center_size(arrow.center(), Vec2::new(18.0, 14.0)), code) => {}
+                Some(code)
+                    if crate::flags::paint(
+                        ui,
+                        egui::Rect::from_center_size(arrow.center(), Vec2::new(18.0, 14.0)),
+                        code,
+                    ) => {}
                 _ => {
-                    ui.painter().text(arrow.center(), Align2::CENTER_CENTER, icon, FontId::proportional(14.0), pal.text);
+                    ui.painter().text(
+                        arrow.center(),
+                        Align2::CENTER_CENTER,
+                        icon,
+                        FontId::proportional(14.0),
+                        pal.text,
+                    );
                 }
             }
         }
@@ -456,9 +467,6 @@ impl NcApp {
                 if matches!(item.doc, DocId::Page(_)) && ui.button(tr(lang, "duplicate")).clicked() {
                     action = Some("dup");
                 }
-                if ui.button(tr(lang, "export_markdown")).clicked() {
-                    action = Some("export");
-                }
                 ui.separator();
                 if ui.button(RichText::new(tr(lang, "move_to_trash")).color(pal.danger)).clicked() {
                     action = Some("trash");
@@ -484,7 +492,6 @@ impl NcApp {
                 self.move_query.clear();
                 self.move_doc = Some(item.doc.clone());
             }
-            Some("export") => self.export_doc(&item.doc.clone()),
             Some("trash") => self.trash_doc(&item.doc.clone()),
             _ => {}
         }

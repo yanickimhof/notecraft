@@ -617,6 +617,18 @@ fn cursor_range(ctx: &egui::Context, id: Id) -> Option<(usize, usize)> {
     Some((a.min(b), a.max(b)))
 }
 
+/// Where the moving end of the selection (the caret itself when nothing is selected) sits.
+fn cursor_head(ctx: &egui::Context, id: Id) -> Option<usize> {
+    let st = egui::text_edit::TextEditState::load(ctx, id)?;
+    Some(st.cursor.char_range()?.primary.index.0)
+}
+
+/// Where the fixed end of the selection sits.
+fn cursor_anchor(ctx: &egui::Context, id: Id) -> Option<usize> {
+    let st = egui::text_edit::TextEditState::load(ctx, id)?;
+    Some(st.cursor.char_range()?.secondary.index.0)
+}
+
 fn set_cursor(ctx: &egui::Context, id: Id, caret: Caret, len: usize) {
     let mut st = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
     let range = match caret {
@@ -1252,7 +1264,6 @@ impl EditorState {
     }
 
     /// One block row: the block, its colour and selection backgrounds, and its "+" and handle.
-    #[allow(clippy::too_many_arguments)]
     fn show_row(
         &mut self,
         ui: &mut Ui,
@@ -1656,7 +1667,6 @@ impl EditorState {
 
     // -------------------------------------------------------------- one block
 
-    #[allow(clippy::too_many_arguments)]
     fn block_ui(
         &mut self,
         ui: &mut Ui,
@@ -2068,7 +2078,9 @@ mod helpers;
 mod image_block;
 mod keys;
 mod meeting_card;
+mod menus;
 mod richpaste;
+mod selection;
 mod simple;
 mod table;
 pub use helpers::human_size;

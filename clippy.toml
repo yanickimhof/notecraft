@@ -1,0 +1,2 @@
+# egui widgets take the context they draw in (ui, palette, language, state...): allow a few more than 7
+too-many-arguments-threshold = 10

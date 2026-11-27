@@ -926,25 +926,28 @@ impl NcApp {
         }
     }
 
-    /// Open the page as an email draft in the system's mail application (Mail, Outlook...), formatting kept.
+    /// Start an email in the default mail application (Mail, Outlook...) with the page's title as the
+    /// subject; the formatted page is put on the clipboard, to paste into the message (⌘V).
     pub fn email_page(&mut self, doc: &DocId) {
         self.flush_save();
         let Some(ws) = &self.ws else { return };
-        let dir = std::env::temp_dir().join("NoteCraft-mail");
-        match import_export::email_draft(ws, doc, &dir) {
-            Ok(path) => {
+        match import_export::email_parts(ws, doc) {
+            Ok((subject, html, text)) => {
+                let copied = arboard::Clipboard::new().ok().is_some_and(|mut c| c.set_html(html, Some(text)).is_ok());
                 #[cfg(target_os = "macos")]
-                let ok = std::process::Command::new("open").arg(&path).status().is_ok_and(|s| s.success());
+                let ok = std::process::Command::new("open")
+                    .arg(format!("mailto:?subject={}", percent_encode(&subject)))
+                    .status()
+                    .is_ok_and(|s| s.success());
                 #[cfg(not(target_os = "macos"))]
                 let ok = false;
-                if ok {
-                    let msg = self.t("email_opened").to_string();
-                    self.notify(msg);
-                } else {
-                    reveal(&path);
-                    let msg = format!("{} {}", self.t("exported"), path.display());
-                    self.notify(msg);
-                }
+                let key = match (copied, ok) {
+                    (true, true) => "email_opened",
+                    (true, false) => "email_copied",
+                    _ => "email_failed",
+                };
+                let msg = self.t(key).to_string();
+                self.notify(msg);
             }
             Err(e) => self.notify_error("export", &e),
         }
@@ -1204,4 +1207,17 @@ pub fn title_map(ws: &Workspace) -> HashMap<String, (DocId, String)> {
         }
     }
     m
+}
+
+/// Percent-encoding for a `mailto:` value.
+fn percent_encode(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }

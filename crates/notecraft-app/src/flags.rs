@@ -7,7 +7,11 @@ pub use crate::flags_data::FLAGS;
 
 /// The flag emoji of a two letter country code (`ch` gives the Swiss flag).
 pub fn emoji_of(code: &str) -> String {
-    code.to_ascii_uppercase().chars().filter(char::is_ascii_uppercase).map(|c| char::from_u32(0x1F1E6 + (c as u32 - 'A' as u32)).unwrap_or(c)).collect()
+    code.to_ascii_uppercase()
+        .chars()
+        .filter(char::is_ascii_uppercase)
+        .map(|c| char::from_u32(0x1F1E6 + (c as u32 - 'A' as u32)).unwrap_or(c))
+        .collect()
 }
 
 /// The country code (lower case) when `icon` is exactly one flag emoji we have a picture for.
@@ -17,7 +21,11 @@ pub fn code_of(icon: &str) -> Option<&'static str> {
     if it.next().is_some() {
         return None;
     }
-    let letter = |c: char| (0x1F1E6..=0x1F1FF).contains(&(c as u32)).then(|| char::from_u32('a' as u32 + (c as u32 - 0x1F1E6)).unwrap_or('a'));
+    let letter = |c: char| {
+        (0x1F1E6..=0x1F1FF)
+            .contains(&(c as u32))
+            .then(|| char::from_u32('a' as u32 + (c as u32 - 0x1F1E6)).unwrap_or('a'))
+    };
     let code: String = [letter(a)?, letter(b)?].iter().collect();
     FLAGS.iter().find(|f| f.0 == code).map(|f| f.0)
 }
@@ -46,14 +54,55 @@ pub fn paint(ui: &egui::Ui, rect: egui::Rect, code: &str) -> bool {
     let Some(tex) = texture(ui.ctx(), code) else { return false };
     let w = rect.width().min(rect.height() * 4.0 / 3.0);
     let r = egui::Rect::from_center_size(rect.center(), egui::vec2(w, w * 0.75));
-    ui.painter().image(tex.id(), r, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
-    ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(0.5, egui::Color32::from_black_alpha(40)), egui::StrokeKind::Outside);
+    ui.painter().image(
+        tex.id(),
+        r,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+    ui.painter().rect_stroke(
+        r,
+        2.0,
+        egui::Stroke::new(0.5, egui::Color32::from_black_alpha(40)),
+        egui::StrokeKind::Outside,
+    );
     true
+}
+
+/// A title that starts with a flag (`🇨🇭 Title`): the text with blank space where the flag goes (so a button
+/// can reserve the room), and the flag's code. Other text comes back unchanged.
+pub fn reserve(text: &str) -> (String, Option<&'static str>) {
+    let head: String = text.chars().take(2).collect();
+    match code_of(&head) {
+        Some(code) => {
+            let rest: String = text.chars().skip(2).collect();
+            (format!("\u{2003}\u{2002} {}", rest.trim_start()), Some(code))
+        }
+        None => (text.to_string(), None),
+    }
+}
+
+/// Draw the flag reserved by [`reserve`] at the left of a button that has the text.
+pub fn paint_in_button(ui: &egui::Ui, button: &egui::Response, code: &str, text_size: f32) {
+    let h = text_size * 0.95;
+    let rect = egui::Rect::from_min_size(
+        egui::pos2(button.rect.min.x + ui.spacing().button_padding.x, button.rect.center().y - h * 0.5),
+        egui::vec2(h * 1.34, h),
+    );
+    paint(ui, rect, code);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_leading_flag_is_swapped_for_room() {
+        let (text, code) = reserve("🇨🇭 Suisse");
+        assert_eq!(code, Some("ch"));
+        assert!(text.ends_with("Suisse") && !text.contains('🇨'));
+        assert_eq!(reserve("📄 Page"), ("📄 Page".to_string(), None));
+    }
 
     #[test]
     fn flag_emoji_round_trip() {

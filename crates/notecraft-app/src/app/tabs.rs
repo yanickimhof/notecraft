@@ -213,11 +213,15 @@ impl NcApp {
                     let active = i == self.active_tab;
                     let fill = if active { pal.active } else { egui::Color32::TRANSPARENT };
                     let color = if active { pal.text } else { pal.text_secondary };
+                    let (shown, flag) = crate::flags::reserve(label);
                     let r = ui.add(
-                        egui::Button::new(RichText::new(label).size(13.0).color(color))
+                        egui::Button::new(RichText::new(shown).size(13.0).color(color))
                             .fill(fill)
                             .stroke(egui::Stroke::NONE),
                     );
+                    if let Some(code) = flag {
+                        crate::flags::paint_in_button(ui, &r, code, 13.0);
+                    }
                     widgets::a11y(&r, label);
                     if r.clicked() {
                         switch = Some(i);

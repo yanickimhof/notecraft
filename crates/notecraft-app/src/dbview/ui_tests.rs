@@ -131,7 +131,6 @@ fn cell_harness(
     (h, dir)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn cell_editor_for_test(
     ui: &mut Ui,
     ws: &mut Workspace,
