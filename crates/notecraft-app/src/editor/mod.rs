@@ -3,7 +3,7 @@
 //! drop reordering and undo/redo. Anything that needs the workspace
 //! (creating pages, picking files, navigating) is returned as an [`Action`].
 
-use crate::i18n::{both, tr, Lang};
+use crate::i18n::{tr, Lang};
 use crate::theme::{self, Palette};
 use crate::widgets;
 use eframe::egui::{
@@ -14,12 +14,14 @@ use notecraft_core::blocks::{self, Block, BlockKind, MAX_DEPTH};
 use notecraft_core::database::ViewKind;
 use notecraft_core::history::History;
 use notecraft_core::inline;
-use notecraft_core::search::fuzzy_score;
 use notecraft_core::DocId;
+use slash_items::kind_for;
+pub use slash_items::{filter_items, slash_query, SLASH_ITEMS};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
+use text_paint::{base_for, inline_job, paint_underlines, placeholder, Base};
 
 /// Where to put the cursor when focusing a block.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -332,129 +334,6 @@ impl Default for EditorState {
     }
 }
 
-// --------------------------------------------------------------- slash items
-
-pub struct SlashItem {
-    pub key: &'static str,
-    pub glyph: &'static str,
-    pub aliases: &'static [&'static str],
-}
-
-/// Slash menu items, in the order the person asked for.
-pub const SLASH_ITEMS: &[SlashItem] = &[
-    SlashItem { key: "text", glyph: "Aa", aliases: &["paragraph", "plain", "texte"] },
-    SlashItem { key: "page", glyph: "📄", aliases: &["subpage", "sous-page"] },
-    SlashItem { key: "todo", glyph: "☑", aliases: &["todo", "checkbox", "task", "tache", "[]"] },
-    SlashItem { key: "h1", glyph: "H1", aliases: &["h1", "#", "title", "titre"] },
-    SlashItem { key: "h2", glyph: "H2", aliases: &["h2", "##", "subtitle"] },
-    SlashItem { key: "h3", glyph: "H3", aliases: &["h3", "###"] },
-    SlashItem { key: "bulleted", glyph: "•", aliases: &["bullet", "ul", "puce", "-"] },
-    SlashItem { key: "numbered", glyph: "1.", aliases: &["number", "ol", "numero", "1."] },
-    SlashItem { key: "toggle", glyph: "▸", aliases: &["toggle", "collapse", "details", "deplier"] },
-    SlashItem { key: "quote", glyph: "❝", aliases: &["quote", "blockquote", "citation"] },
-    SlashItem { key: "divider", glyph: "—", aliases: &["divider", "hr", "line", "separateur", "---"] },
-    SlashItem {
-        key: "toc",
-        glyph: "≡",
-        aliases: &["toc", "contents", "table of contents", "sommaire", "table des matieres"],
-    },
-    SlashItem { key: "columns2", glyph: "▥", aliases: &["columns", "2 columns", "colonnes", "two columns"] },
-    SlashItem { key: "columns3", glyph: "▥", aliases: &["3 columns", "three columns", "trois colonnes"] },
-    SlashItem { key: "group_toggle", glyph: "▾", aliases: &["group", "section", "grouper", "wrap"] },
-    SlashItem { key: "group_callout", glyph: "▣", aliases: &["group", "frame", "encadrer", "wrap"] },
-    SlashItem { key: "callout", glyph: "💡", aliases: &["callout", "note", "tip", "encadre"] },
-    SlashItem { key: "code", glyph: "</>", aliases: &["code", "snippet", "```"] },
-    SlashItem { key: "link", glyph: "↗", aliases: &["link", "mention", "lien", "[["] },
-    SlashItem { key: "date_short", glyph: "📅", aliases: &["date", "today", "aujourd'hui", "jour"] },
-    SlashItem { key: "date_iso", glyph: "📅", aliases: &["date", "today", "iso", "aujourd'hui"] },
-    SlashItem { key: "date_long", glyph: "📅", aliases: &["date", "today", "long", "aujourd'hui"] },
-    SlashItem { key: "date_full", glyph: "📅", aliases: &["date", "today", "weekday", "jour", "aujourd'hui"] },
-    SlashItem { key: "date_time", glyph: "🕒", aliases: &["date", "time", "now", "heure", "maintenant"] },
-    SlashItem {
-        key: "template",
-        glyph: "📋",
-        aliases: &["template", "modele", "modèle", "minutes", "compte rendu", "meeting minutes", "cr"],
-    },
-    SlashItem { key: "image", glyph: "🖼", aliases: &["image", "picture", "photo", "img"] },
-    SlashItem { key: "file", glyph: "📎", aliases: &["file", "attachment", "pdf", "fichier"] },
-    SlashItem {
-        key: "mermaid",
-        glyph: "⌬",
-        aliases: &["mermaid", "diagram", "flowchart", "graph", "diagramme", "schema", "schéma"],
-    },
-    SlashItem {
-        key: "equation",
-        glyph: "∑",
-        aliases: &["equation", "math", "latex", "tex", "maths", "équation", "formule"],
-    },
-    SlashItem { key: "bookmark", glyph: "🔖", aliases: &["bookmark", "link", "web", "url", "signet", "lien"] },
-    SlashItem { key: "simple_table", glyph: "⊟", aliases: &["table", "grid", "tableau", "simple", "array"] },
-    SlashItem { key: "table", glyph: "▦", aliases: &["table", "database", "db", "tableau"] },
-    SlashItem { key: "board", glyph: "▥", aliases: &["board", "kanban", "database"] },
-    SlashItem { key: "list", glyph: "☰", aliases: &["list", "database", "liste"] },
-    SlashItem { key: "dbview", glyph: "⊞", aliases: &["inline", "embed", "database", "view", "base", "vue"] },
-    SlashItem {
-        key: "meeting",
-        glyph: "🎙",
-        aliases: &[
-            "meeting",
-            "meet",
-            "record",
-            "transcribe",
-            "transcript",
-            "notes",
-            "reunion",
-            "enregistrer",
-            "transcription",
-        ],
-    },
-];
-
-/// Items that can turn an existing block into another type.
-const TURN_INTO: &[&str] = &[
-    "text",
-    "todo",
-    "h1",
-    "h2",
-    "h3",
-    "bulleted",
-    "numbered",
-    "toggle",
-    "quote",
-    "callout",
-    "code",
-    "group_toggle",
-    "group_callout",
-];
-
-pub fn filter_items(query: &str, mode: &SlashMode) -> Vec<&'static SlashItem> {
-    let mut scored: Vec<(i32, usize, &'static SlashItem)> = SLASH_ITEMS
-        .iter()
-        .enumerate()
-        .filter(|(_, it)| {
-            if it.key.starts_with("group_") {
-                *mode == SlashMode::TurnInto
-            } else {
-                *mode == SlashMode::Insert || TURN_INTO.contains(&it.key)
-            }
-        })
-        .filter_map(|(i, it)| {
-            if query.is_empty() {
-                // the other date formats show up once "date" is typed
-                return (!matches!(it.key, "date_iso" | "date_long" | "date_full" | "date_time")).then_some((0, i, it));
-            }
-            let (en, fr) = both(&format!("blk_{}", it.key));
-            let best =
-                [en, fr].into_iter().chain(it.aliases.iter().copied()).filter_map(|n| fuzzy_score(query, n)).max()?;
-            (best >= 150).then_some((best, i, it))
-        })
-        .collect();
-    if !query.is_empty() {
-        scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    }
-    scored.into_iter().map(|(_, _, it)| it).collect()
-}
-
 const MERMAID_SAMPLE: &str =
     "graph TD\n  A[Start] --> B{Choice}\n  B -->|yes| C[Done]\n  B -->|no| D[Retry]\n  D --> B";
 
@@ -503,57 +382,6 @@ fn mermaid_view(ui: &mut Ui, bid: u64, src: &str, pal: &Palette, lang: Lang) {
         bg: pal.code_bg,
     };
     drawn.draw(&painter, origin, &colors);
-}
-
-fn kind_for(key: &str) -> Option<BlockKind> {
-    Some(match key {
-        "text" => BlockKind::Paragraph,
-        "todo" => BlockKind::Todo { checked: false },
-        "h1" => BlockKind::Heading(1),
-        "h2" => BlockKind::Heading(2),
-        "h3" => BlockKind::Heading(3),
-        "bulleted" => BlockKind::Bulleted,
-        "numbered" => BlockKind::Numbered,
-        "toggle" => BlockKind::Toggle { open: true },
-        "quote" => BlockKind::Quote,
-        "callout" => BlockKind::Callout { icon: "💡".into() },
-        "code" => BlockKind::Code { lang: String::new() },
-        "mermaid" => BlockKind::Code { lang: "mermaid".into() },
-        "divider" => BlockKind::Divider,
-        "toc" => BlockKind::Toc,
-        "meeting" => BlockKind::Meeting,
-        "dbview" => BlockKind::Database,
-        "simple_table" => BlockKind::Table,
-        "bookmark" => BlockKind::Bookmark { url: String::new() },
-        "equation" => BlockKind::Equation,
-        _ => return None,
-    })
-}
-
-/// The `/query` the caret is right after, if any: (char index of '/', query).
-pub fn slash_query(text: &str, caret: usize) -> Option<(usize, String)> {
-    let chars: Vec<char> = text.chars().collect();
-    if caret > chars.len() {
-        return None;
-    }
-    let mut i = caret;
-    while i > 0 {
-        i -= 1;
-        let c = chars[i];
-        if c == '/' {
-            if i == 0 || chars[i - 1].is_whitespace() {
-                let q: String = chars[i + 1..caret].iter().collect();
-                if q.chars().count() <= 24 {
-                    return Some((i, q));
-                }
-            }
-            return None;
-        }
-        if c.is_whitespace() {
-            return None;
-        }
-    }
-    None
 }
 
 // ------------------------------------------------------------ text helpers
@@ -643,182 +471,6 @@ fn set_cursor(ctx: &egui::Context, id: Id, caret: Caret, len: usize) {
 
 /// Selected cells of a table: block, anchor and head as (row, column).
 type TableSel = (u64, (usize, usize), (usize, usize));
-
-/// Base look of a block's text.
-#[derive(Clone, Copy)]
-struct Base {
-    size: f32,
-    weight: f32,
-    color: Color32,
-    strike: bool,
-}
-
-fn base_for(kind: &BlockKind, color: &str, pal: &Palette) -> Base {
-    let mut b = Base { size: theme::BODY_SIZE * theme::body_scale(), weight: 400.0, color: pal.text, strike: false };
-    if let Some((Some(text), _)) = theme::block_color(color, pal.dark) {
-        b.color = text;
-    }
-    match kind {
-        BlockKind::Heading(l) => {
-            b.size = theme::heading_size(*l) * theme::body_scale();
-            b.weight = 680.0;
-        }
-        BlockKind::Todo { checked: true } => {
-            b.color = pal.text_faint;
-            b.strike = true;
-        }
-        BlockKind::Quote => b.size = 17.0 * theme::body_scale(),
-        _ => {}
-    }
-    b
-}
-
-fn format_for(base: &Base, pal: &Palette) -> TextFormat {
-    let mut f = TextFormat {
-        font_id: FontId::new(base.size, theme::page_family()),
-        color: base.color,
-        line_height: Some(base.size * 1.5),
-        ..Default::default()
-    };
-    if theme::has_weight_axis() && base.weight != 400.0 {
-        f.coords = theme::weight(base.weight);
-    }
-    if base.strike {
-        f.strikethrough = Stroke::new(1.0, pal.text_faint);
-    }
-    f
-}
-
-/// Lay out rich text with inline styles; markers are dimmed when editing and
-/// hidden otherwise.
-fn inline_job(text: &str, base: &Base, pal: &Palette, wrap: f32) -> LayoutJob {
-    let mut job = LayoutJob::default();
-    job.wrap.max_width = wrap;
-    job.first_row_min_height = base.size * 1.5;
-    for seg in inline::parse(text) {
-        let s = &seg.style;
-        let mut f = format_for(base, pal);
-        let mut weight = base.weight;
-        if s.bold {
-            weight = 700.0;
-        }
-        if s.italic {
-            f.italics = true;
-        }
-        if let Some(c) = &s.color {
-            f.color = pal.option_tokens(c).2;
-        }
-        // underlines (also for links and mentions) are painted by `paint_underlines`
-        if s.strike {
-            f.strikethrough = Stroke::new(1.0, f.color);
-        }
-        if s.code {
-            f.font_id = FontId::monospace(base.size * 0.86);
-            f.background = pal.code_bg;
-            f.color = if pal.dark { Color32::from_rgb(0xFF, 0x8A, 0x80) } else { Color32::from_rgb(0xC4, 0x3E, 0x3E) };
-        }
-        if s.mention.is_some() {
-            weight = weight.max(560.0);
-            f.color = pal.mention;
-        }
-        // a link reads as a link: blue (an explicit text colour still wins)
-        if s.link.is_some() && s.color.is_none() && !s.code {
-            f.color = pal.accent;
-        }
-        if theme::has_weight_axis() && weight != 400.0 {
-            f.coords = theme::weight(weight);
-        }
-        if seg.marker {
-            // WYSIWYG: markers stay in the stored text but are never shown
-            // hidden markers must not take room: a long link address used to leave a wide gap
-            f.font_id = FontId::proportional(0.01);
-            f.color = Color32::TRANSPARENT;
-            f.underline = Stroke::NONE;
-            f.strikethrough = Stroke::NONE;
-            f.background = Color32::TRANSPARENT;
-            f.italics = false;
-            f.line_height = None;
-        }
-        job.append(&text[seg.range.clone()], 0.0, f);
-    }
-    job
-}
-
-/// Draw underlines (underline style, links, mentions) just below the
-/// baseline. egui's own underline sits at the bottom of the (taller) line
-/// box, where the text field clips it, so it never showed.
-fn paint_underlines(
-    painter: &egui::Painter,
-    o: &egui::text_edit::TextEditOutput,
-    text: &str,
-    pal: &Palette,
-    color: Color32,
-) {
-    let n = text.chars().count();
-    let mut marks: Vec<Option<Color32>> = vec![None; n];
-    let byte_to_char: std::collections::HashMap<usize, usize> =
-        text.char_indices().enumerate().map(|(ci, (bi, _))| (bi, ci)).collect();
-    let mut any = false;
-    for seg in inline::parse(text) {
-        if seg.marker {
-            continue;
-        }
-        let s = &seg.style;
-        let c = if s.link.is_some() && s.color.is_none() {
-            Some(pal.accent)
-        } else if s.link.is_some() || s.mention.is_some() {
-            Some(pal.text_faint)
-        } else if s.underline {
-            Some(if s.code { pal.text_secondary } else { color })
-        } else {
-            None
-        };
-        if let Some(c) = c {
-            for (bi, _) in text[seg.range.clone()].char_indices() {
-                if let Some(ci) = byte_to_char.get(&(seg.range.start + bi)) {
-                    marks[*ci] = Some(c);
-                    any = true;
-                }
-            }
-        }
-    }
-    if !any {
-        return;
-    }
-    let mut ci = 0;
-    for row in &o.galley.rows {
-        for g in &row.row.glyphs {
-            if let Some(Some(c)) = marks.get(ci) {
-                let base = o.galley_pos + row.pos.to_vec2() + g.pos.to_vec2();
-                let y = base.y + 2.5;
-                painter.line_segment(
-                    [egui::pos2(base.x, y), egui::pos2(base.x + g.advance_width, y)],
-                    Stroke::new(1.0, *c),
-                );
-            }
-            ci += 1;
-        }
-        if row.ends_with_newline {
-            ci += 1;
-        }
-    }
-}
-
-fn placeholder(kind: &BlockKind, focused: bool, lang: Lang) -> Option<&'static str> {
-    match kind {
-        BlockKind::Heading(1) => Some(tr(lang, "blk_h1")),
-        BlockKind::Heading(2) => Some(tr(lang, "blk_h2")),
-        BlockKind::Heading(_) => Some(tr(lang, "blk_h3")),
-        _ if !focused => None,
-        BlockKind::Paragraph => Some(tr(lang, "type_slash")),
-        BlockKind::Bulleted | BlockKind::Numbered => Some(tr(lang, "list_placeholder")),
-        BlockKind::Todo { .. } => Some(tr(lang, "todo_placeholder")),
-        BlockKind::Toggle { .. } => Some(tr(lang, "toggle_placeholder")),
-        BlockKind::Quote => Some(tr(lang, "quote_placeholder")),
-        BlockKind::Callout { .. } => Some(tr(lang, "type_slash")),
-        _ => None,
-    }
-}
 
 /// The paragraph is exactly one `[[mention]]` → shown as a page link block.
 fn sole_mention(text: &str) -> Option<&str> {
@@ -2082,7 +1734,9 @@ mod menus;
 mod richpaste;
 mod selection;
 mod simple;
+mod slash_items;
 mod table;
+mod text_paint;
 pub use helpers::human_size;
 use helpers::number_label;
 
