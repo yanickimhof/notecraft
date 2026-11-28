@@ -266,7 +266,10 @@ impl NcApp {
                                 }
                             });
                     });
-                    ui.separator();
+                    // a fixed-height rule: `ui.separator()` stretches to the whole free height here, which made
+                    // the window grow every frame until it left the screen
+                    let (rule, _) = ui.allocate_exact_size(egui::vec2(9.0, list_h), egui::Sense::hover());
+                    ui.painter().vline(rule.center().x, rule.y_range(), egui::Stroke::new(1.0, pal.border));
                     ui.vertical(|ui| {
                         ui.set_height(list_h);
                         egui::ScrollArea::vertical()
@@ -320,5 +323,80 @@ impl NcApp {
         if !(close || modal.should_close()) {
             self.backup.history = Some(view);
         }
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use eframe::egui;
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    /// Height of a modal laid out like the history window, after several frames.
+    fn modal_height(with_separator: bool) -> (f32, f32) {
+        let heights: Rc<Cell<(f32, f32)>> = Rc::new(Cell::new((0.0, 0.0)));
+        let out = heights.clone();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(840.0, 600.0)).build_ui_state(
+            move |ui, _: &mut ()| {
+                let ctx = &ui.ctx().clone();
+                let list_h = (ctx.content_rect().height() * 0.55).clamp(200.0, 460.0);
+                let m = egui::Modal::new(egui::Id::unique("history-test")).show(ctx, |ui| {
+                    ui.set_width(720.0);
+                    ui.heading("History");
+                    ui.horizontal_top(|ui| {
+                        ui.vertical(|ui| {
+                            ui.set_width(220.0);
+                            ui.set_height(list_h);
+                            egui::ScrollArea::vertical()
+                                .id_salt("l")
+                                .max_height(list_h)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    for k in 0..60 {
+                                        let _ = ui.selectable_label(false, format!("{k} h ago · replace_text"));
+                                    }
+                                });
+                        });
+                        if with_separator {
+                            ui.separator();
+                        } else {
+                            let (rule, _) = ui.allocate_exact_size(egui::vec2(9.0, list_h), egui::Sense::hover());
+                            ui.painter().vline(
+                                rule.center().x,
+                                rule.y_range(),
+                                egui::Stroke::new(1.0, egui::Color32::GRAY),
+                            );
+                        }
+                        ui.vertical(|ui| {
+                            ui.set_height(list_h);
+                            egui::ScrollArea::vertical()
+                                .id_salt("p")
+                                .max_height(list_h)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    ui.add(egui::Label::new("long preview text ".repeat(600)).wrap());
+                                });
+                        });
+                    });
+                    ui.add_space(8.0);
+                    let _ = ui.button("Close");
+                });
+                let r = m.response.rect;
+                out.set((r.min.y, r.height()));
+            },
+            (),
+        );
+        for _ in 0..8 {
+            h.run();
+        }
+        heights.get()
+    }
+
+    #[test]
+    fn the_history_window_keeps_a_stable_size_inside_the_screen() {
+        let (top, height) = modal_height(false);
+        assert!(top >= 0.0 && height <= 600.0, "top {top} height {height}");
+        let (top2, height2) = modal_height(false);
+        assert_eq!((top, height), (top2, height2));
     }
 }
