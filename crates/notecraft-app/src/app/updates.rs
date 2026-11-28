@@ -6,9 +6,19 @@ impl NcApp {
     /// Starts the check when it is due and picks up its answer. Silent when anything fails.
     pub fn poll_update(&mut self, ctx: &eframe::egui::Context) {
         if self.update_rx.is_none() && !self.update_done {
-            if !(self.prefs.check_updates && self.prefs.onboarded) || notecraft_net::lockdown() {
+            // a workspace opened before the assistant existed counts as started
+            let started = self.prefs.onboarded || self.prefs.last_workspace.is_some();
+            let wanted = self.update_forced || (self.prefs.check_updates && started);
+            if !wanted {
                 return;
             }
+            if notecraft_net::lockdown() {
+                // nothing may leave this Mac: say so instead of waiting
+                self.update_done = true;
+                self.update_forced = false;
+                return;
+            }
+            self.update_forced = false;
             let (tx, rx) = std::sync::mpsc::channel();
             std::thread::spawn(move || {
                 let _ = tx.send(notecraft_ai::update::latest_release());
@@ -37,6 +47,7 @@ impl NcApp {
     /// Asks again (the "Check now" button).
     pub fn recheck_update(&mut self) {
         self.update_done = false;
+        self.update_forced = true;
         self.update_ok = false;
         self.update_found = None;
     }
