@@ -82,6 +82,17 @@ pub fn initialize(app: &NSApplication) {
     app_menu.addItem(&quit_item);
     app_menu_item.setSubmenu(Some(&app_menu));
 
+    // NøteCraft patch: an Edit menu holding only "Emoji & Symbols". The emoji key of the keyboard and the
+    // menu item look for it; without it nothing opens. No key equivalents, so text editing is unchanged.
+    let edit_menu_item = NSMenuItem::new(mtm);
+    menubar.addItem(&edit_menu_item);
+    let edit_menu = NSMenu::new(mtm);
+    unsafe { edit_menu.setTitle(ns_string!("Edit")) };
+    let emoji_item =
+        menu_item(mtm, ns_string!("Emoji & Symbols"), Some(sel!(orderFrontCharacterPalette:)), None);
+    edit_menu.addItem(&emoji_item);
+    edit_menu_item.setSubmenu(Some(&edit_menu));
+
     unsafe { app.setServicesMenu(Some(&services_menu)) };
     app.setMainMenu(Some(&menubar));
 }
