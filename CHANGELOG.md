@@ -4,7 +4,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 
 ## 0.6.0 (2026-11-27)
 
-Merges the 0.5.x releases, detailed below.
+Builds on 0.5.0, which merges the 0.5.x updates.
 
 ### Added
 - AI proofreading of a page, with a short AI menu (Summarize, Improve, Proofread, Translate, Ask). The result is applied at once and Command Z undoes it; answers to questions stay in the panel. Transcripts, databases, images and code are never sent to the AI.
@@ -26,128 +26,31 @@ Merges the 0.5.x releases, detailed below.
 - Smoother keyboard navigation: arrows, Shift and block selection behave the same way as in a text editor.
 - Long pages stay smooth. Simpler page menu.
 
-## 0.5.8 (2026-11-27)
+## 0.5.0 (2026-11-24 to 2026-11-27)
+
+The 0.5.1 to 0.5.8 updates are merged here.
 
 ### Added
-- A network guard: every connection of the app (local model, cloud AI, model downloads, publishing, link previews) goes through one gatekeeper that applies a rule per purpose and logs the attempt. Settings, AI: a network lockdown switch (nothing leaves this Mac) and a list of the latest connection attempts.
-- A warning when Ollama answers on the whole network instead of this Mac only.
-- Long pages stay smooth: blocks far outside the window are no longer redrawn (a 10 000-block page drew in about 54 ms per frame, now about 26 ms, and a page of a few thousand blocks stays under one frame).
+- Publish a page or a section on the web at a private link, with Preview, Update and Unpublish. A green dot marks published pages, which cannot be trashed or deleted until unpublished.
+- A one minute demo, a tour page and a first launch assistant (language, folder, AI and meetings); nothing is downloaded without a click.
+- Grok as a fourth AI engine. Local models: suggested downloads with progress, and removal.
+- Network guard: one gatekeeper for every connection, a lockdown switch, an activity log, and a lock that keeps the local model on this Mac.
+- Templates section in the sidebar: page templates and meeting note templates (editable pages, chosen in the meeting block). Today's date with / date or Command Shift D.
+- Actions on several selected lines, columns by dragging a line beside another, resizable images, cover gradients.
+- Command A selects a line then the whole page; copying keeps bold, colours and links for a mail or Word.
+- Database tables: resizable columns, wrapped text, keyboard moves between cells, editable status and tag options.
+- Simple tables: typing, arrows, Tab and Shift Enter work as in a text editor.
+- Pasting from Outlook, Word or a web page keeps headings, lists, bold, links and tables. Command click opens a link.
+- Automatic backups thinned like Time Machine. Foldable sidebar sections.
+- A database created by Claude (MCP) inside a page shows in that page.
 
 ### Changed
-- The editor file was split: the table, image, callout, code, bookmark, equation, contents, database blocks and the meeting card now have their own modules. The block drawing function went from 1 160 lines to about 170.
+- Long pages stay smooth (blocks outside the window are not redrawn).
+- Simpler page menu and sidebar. Presentation opens the page in the browser.
 - Pasted links are never fetched when they point at this Mac or a private network.
 
 ### Security
-- HTML export no longer writes links that run code (javascript:, data:, file:).
-- A colour change on a selection that cut through a colour tag, or across nested colours, could damage the text. Fixed.
-- Pasting HTML with some accented characters in unusual tags could crash the import. Fixed.
-
-## 0.5.7 (2026-11-26)
-
-### Added
-- A lock in the AI settings: closed (default), the local model only talks to this Mac; open and red, any address is allowed. An address that is not on this Mac is refused while the lock is closed.
-- A link on the built-in note templates puts back their original text.
-- Removing a local model asks for a second click.
-
-### Changed
-- The meeting card moved out of the editor into its own module, a first step of the editor clean-up.
-- The note templates are read once a second instead of at every frame, and writing them is attempted once.
-- Look-alike hosts such as 127.evil.example.com are no longer taken for this Mac.
-
-## 0.5.6 (2026-11-26)
-
-### Added
-- Dropping a file on a page shows a line with a dot where the link will land.
-- The sidebar sections (Favorites, Pages, Templates, Meeting notes) fold and unfold, and remember it.
-- Every built-in meeting note template is now a page in Meeting notes, so it can be edited, copied or deleted. The meeting block lists them, with "Manage note templates…" at the end of the menu.
-- The AI model menu also offers to download a suggested local model and to remove an installed one.
-
-### Changed
-- The Reminders and Graph shortcuts are gone from the sidebar.
-- "Turn into" menus tick the current block type.
-- The small pencil next to the reset icon is gone.
-- /page adds a sub-page listed in the Sub-pages section, without a link in the body.
-- Settings rows no longer draw outside the window when scrolled.
-
-## 0.5.5 (2026-11-26)
-
-### Added
-- A Templates section in the sidebar, under Pages: page templates, then the templates for meeting notes. The + creates a page template.
-- The meeting block chooses the kind of meeting (note template) before recording, with small frameless menus for what is recorded, the language, the microphone and the template. A small icon in the corner puts the settings back to their defaults.
-
-### Changed
-- The New database entry is gone from the sidebar (the / menu still creates databases).
-
-## 0.5.4 (2026-11-26)
-
-### Added
-- Note templates for recorded meetings: a "Meeting notes" page inside Templates holds them (each sub-page is one, written as instructions for the AI). The meeting block has a template menu with the built-in ones and yours, and a Reset link that puts the meeting settings back to their defaults.
-- Local models: Settings, AI lists suggested models with a download button, the progress and a choose button.
-- More covers: 24 gradients, picked from a gallery.
-- Simple tables: Shift Enter adds a line break inside a cell.
-- Database tags can be renamed in the options editor; renaming or deleting a tag updates every row.
-
-### Changed
-- Copying part of a text keeps its formatting (bold, colours, links) when pasted in a mail or a document, and colours from a mail or web page are pasted as colours.
-- Bullets use one simple dot at every level.
-
-### Fixed
-- Colouring a whole line now also recolours the words that had a colour of their own.
-- The slash menu keeps its height when the page is short.
-
-## 0.5.3 (2026-11-26)
-
-### Added
-- Today's date: type / then date to pick a format (numeric, ISO, long, with the weekday, with the time), or press Command Shift D for the format used last.
-- Templates: / then Template inserts the blocks of a template page. The Templates page holds your own templates (each sub-page is one) and a standard Meeting minutes; {{date}} becomes today's date.
-
-### Fixed
-- Simple tables: spaces can be typed, and the arrows, Enter, Tab and Shift Tab move between cells.
-- Various bug fixes.
-
-## 0.5.2 (2026-11-26)
-
-### Added
-- Command A selects the text of a line, then every block of the page; copying gives rich text for a mail or Word, and Markdown for a text editor.
-- Status and tag options: a new one is added at the end, and each can be renamed, recoloured, regrouped or deleted from its cell menu.
-- Local AI: when Ollama has no model, NøteCraft offers to download one and shows the progress.
-
-### Fixed
-- Speech model loading falls back to the processor, and a damaged model file is detected.
-- Various bug fixes.
-
-## 0.5.1 (2026-11-26)
-
-### Added
-- A database created by Claude (MCP) inside a page now shows in that page, not only as a sub-page.
-
-### Fixed
-- Model downloads trust the macOS certificate store (company proxies) and explain network errors.
-- Various bug fixes.
-
-## 0.5.0 (2026-11-24)
-
-### Added
-- A one minute demo built into the app, in French or English following the app language: on the welcome screen, in the first launch assistant and in Settings, About.
-- A green dot in the sidebar and "live" in the page menu show which pages are published. It stacks with the lock icon.
-- Grok as a fourth AI engine.
-- Actions on several selected lines at once: turn into, colour, group, move, delete.
-- Columns by dragging a line beside another.
-- Publish a page or a section on the web at a private link, with Preview, Update and Unpublish.
-- A published page cannot be trashed, archived or deleted until it is unpublished: NøteCraft asks first and takes the link down, and Claude (MCP) is refused while a page is live.
-- A tour page, Discover NøteCraft, opens in every new workspace and shows all the features.
-- A four step assistant at first launch: welcome and language (taken from macOS), folder, AI and meetings, with an optional speech model download. Nothing is downloaded without a click.
-- Images can be resized (drag a corner handle) and aligned left, centre or right; size and place are kept on the published page.
-- Mermaid diagrams and equations appear as pictures on published pages and in the preview.
-- Pasting from Outlook, Word or a web page keeps headings, lists, bold, links and tables.
-- Database tables: drag a column edge to resize it, long text wraps, the keyboard moves between cells (arrows, Tab, Enter), and a tag's colour can be changed from its cell menu.
-- Command click on a link opens it.
-- Automatic backups are thinned like Time Machine: hourly for a day, daily for a month, weekly for a year, then yearly.
-
-### Changed
-- Interface refinements.
-- Simpler page menu: Export, Protection, Appearance and Arrange are submenus.
-- Presentation opens the page in the browser with the same rendering as the published page, with scrolling, zoom and a full screen button.
+- HTML export no longer writes links that run code. Colour changes and unusual pasted HTML can no longer damage text.
 
 ### Fixed
 - Various bug fixes.
