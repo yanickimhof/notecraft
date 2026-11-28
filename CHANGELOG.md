@@ -4,8 +4,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 
 ## 0.6.0 (2026-11-27)
 
-Builds on 0.5.0, which merges the 0.5.x updates.
-
 ### Added
 - AI proofreading of a page, with a short AI menu (Summarize, Improve, Proofread, Translate, Ask). The result is applied at once and Command Z undoes it; answers to questions stay in the panel. Transcripts, databases, images and code are never sent to the AI.
 - Local AI shows its progress (seconds, part, characters) and no longer times out while the model is still writing.
@@ -26,9 +24,7 @@ Builds on 0.5.0, which merges the 0.5.x updates.
 - Smoother keyboard navigation: arrows, Shift and block selection behave the same way as in a text editor.
 - Long pages stay smooth. Simpler page menu.
 
-## 0.5.0 (2026-11-24 to 2026-11-27)
-
-The 0.5.1 to 0.5.8 updates are merged here.
+## 0.5.0 (2026-11-27)
 
 ### Added
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish. A green dot marks published pages, which cannot be trashed or deleted until unpublished.
