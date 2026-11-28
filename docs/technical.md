@@ -106,6 +106,10 @@ Review actions (Summarize, Improve, Proofread, Translate) are applied to the pag
 
 Local requests (Ollama) are streamed (`stream: true`, one JSON line per chunk). The panel shows seconds, part and characters received, and the timeout applies to silence between chunks rather than to the whole answer. They bypass any system or corporate proxy (`local_agent`), which would otherwise intercept `localhost`. Models that echo the request (`Page title:`, `<page>` tags) are cleaned by `clean_answer`. Cloud engines still answer in one piece.
 
+## Update check
+
+`notecraft-ai::update::latest_release` reads `releases/latest` of the project on `api.github.com` (purpose `UpdateCheck`, refused by the network guard for any other host and in lockdown). It runs once per launch on a thread, after the first launch assistant, when `check_updates` is on (default); the answer is accepted only if its page address is on the project's GitHub page. `is_newer` compares version numbers. A newer version shows as a faint line above the trash in the sidebar and in Settings, About. Failures are silent.
+
 ## Meeting notes
 
 - Crate `notecraft-meeting`: `audio` (cpal capture on the UI thread, linear resampler to 16 kHz mono; sources: microphone, system audio through a Core Audio tap on the default output device, or both mixed), `chunker` (cuts at pauses, 6 to 25 s), `transcribe` (whisper-rs with Metal and, for English, NVIDIA Parakeet through ONNX Runtime with `parakeet-rs`; worker thread, `choose_engine`, vocabulary hint, noise filter; `parakeet-rs` 0.3 needs `ort` 2.0.0-rc.13, kept by Cargo.lock), `models` (ggml files and Parakeet ONNX files downloaded from Hugging Face into the app support folder), `permission` (AVCaptureDevice authorization on macOS).

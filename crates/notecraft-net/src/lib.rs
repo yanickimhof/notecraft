@@ -28,6 +28,8 @@ pub enum Purpose {
     Publish,
     /// Reading the title of a pasted link.
     LinkPreview,
+    /// Asking GitHub which version of the app is the latest.
+    UpdateCheck,
 }
 
 impl Purpose {
@@ -38,6 +40,7 @@ impl Purpose {
             Purpose::ModelDownload => "model download",
             Purpose::Publish => "publish",
             Purpose::LinkPreview => "link preview",
+            Purpose::UpdateCheck => "update check",
         }
     }
 }
@@ -189,6 +192,13 @@ fn decide(purpose: Purpose, host: &str) -> Result<(), &'static str> {
                 Err("pages are only published to Cloudflare")
             }
         }
+        Purpose::UpdateCheck => {
+            if host == "api.github.com" {
+                Ok(())
+            } else {
+                Err("the update check only asks GitHub")
+            }
+        }
         Purpose::LinkPreview => {
             if is_private_host(host) {
                 Err("a link preview never reaches this Mac or a private network")
@@ -306,6 +316,8 @@ mod tests {
         assert!(check(Purpose::LinkPreview, "http://192.168.1.1/admin").is_err());
         assert!(check(Purpose::LinkPreview, "http://localhost:8080").is_err());
         assert!(check(Purpose::LinkPreview, "https://example.com").is_ok());
+        assert!(check(Purpose::UpdateCheck, "https://api.github.com/repos/x/y").is_ok());
+        assert!(check(Purpose::UpdateCheck, "https://example.com").is_err());
         assert!(check(Purpose::CloudAi, "https://api.anthropic.com").is_ok());
     }
 

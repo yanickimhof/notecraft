@@ -95,7 +95,8 @@ Only the transcript text goes to Claude, and only if you picked Claude, ChatGPT 
 ## Privacy
 
 - Your notes live in the folder you pick, as plain files. There is no hidden database to lose.
-- No account and no telemetry. NøteCraft never connects to the internet on its own. The only network uses are publishing a page, when you ask for it, the AI engine you choose (Ollama on your Mac stays local; Claude sends the text you submit to Anthropic, ChatGPT to OpenAI and Grok to xAI, and the app says so) and, if you ask for it, the one-time download of a speech model (Whisper or Parakeet).
+- A small line at the bottom of the sidebar says when an update is available; click it to open the download page.
+- No account and no telemetry. NøteCraft only connects to the internet on its own to ask GitHub, once at start, whether a newer version exists (nothing about you is sent; switch it off in Settings, About). The other network uses are publishing a page, when you ask for it, the AI engine you choose (Ollama on your Mac stays local; Claude sends the text you submit to Anthropic, ChatGPT to OpenAI and Grok to xAI, and the app says so) and, if you ask for it, the one-time download of a speech model (Whisper or Parakeet).
 - Your API keys (Claude, OpenAI, Grok) and your Cloudflare token are kept in the macOS Keychain, never in your notes.
 - Backups and the search index are stored outside your notes folder, so syncing never carries them around.
 

@@ -252,6 +252,15 @@ impl NcApp {
                 self.close_windows();
                 self.trash_open = true;
             }
+            // a discreet line when a newer version exists
+            if let Some(r) = self.update_found.clone() {
+                let text = format!("\u{2191}  {} {}", tr(lang, "update_available"), r.version);
+                let resp = ui
+                    .add(egui::Label::new(RichText::new(text).size(12.0).color(pal.text_faint)).sense(Sense::click()));
+                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(r.url));
+                }
+            }
         });
 
         if let Some(d) = nav {

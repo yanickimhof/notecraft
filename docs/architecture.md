@@ -41,7 +41,7 @@ Every file the app writes starts with `format: <n>` (front matter of pages, rows
 1. Plain files are the source of truth; the index can be deleted at any time.
 2. Sync is left to the folder provider (kDrive, Dropbox, iCloud Drive). The app watches files, merges outside edits with unsaved typing and keeps a "conflict copy" when both sides changed.
 3. The app never runs git and never writes a `.git` folder.
-4. Network access is limited to what the user enables: a local Ollama address, the Claude, OpenAI or Grok API with the user's own key, and the one-time download of a speech model on request. There is no update check and no telemetry.
+4. Network access is limited to what the user enables: a local Ollama address, the Claude, OpenAI or Grok API with the user's own key, and the one-time download of a speech model on request. The only other connection is an update check: once per launch, one anonymous request to GitHub's public release list, which can be switched off in Settings, About. There is no telemetry.
 
 ## Build and release
 

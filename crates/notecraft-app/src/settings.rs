@@ -555,6 +555,7 @@ impl NcApp {
         page_title(ui, &pal, "NøteCraft", tr(lang, "about_text"));
         let mut copy = false;
         let mut demo = false;
+        let mut recheck = false;
         card(ui, &pal, |ui| {
             setting_row(ui, &pal, tr(lang, "demo_watch"), tr(lang, "demo_hint"), |ui| {
                 demo = ui.button(tr(lang, "demo_watch")).clicked();
@@ -568,6 +569,20 @@ impl NcApp {
                 );
             });
             row_divider(ui, &pal);
+            let mut check = self.prefs.check_updates;
+            setting_row(ui, &pal, tr(lang, "update_row"), tr(lang, "update_sub"), |ui| {
+                if check && ui.button(tr(lang, "update_now")).clicked() {
+                    recheck = true;
+                }
+                crate::widgets::toggle(ui, &pal, &mut check);
+            });
+            self.prefs.check_updates = check;
+            if let Some(r) = &self.update_found {
+                ui.label(RichText::new(format!("{} · {}", tr(lang, "update_available"), r.version)).color(pal.accent));
+            } else if self.update_done && check {
+                ui.label(RichText::new(tr(lang, "update_uptodate")).color(pal.text_faint));
+            }
+            row_divider(ui, &pal);
             setting_row(ui, &pal, tr(lang, "about_license_title"), "", |ui| {
                 ui.label(RichText::new(tr(lang, "about_license")).color(pal.text_secondary));
             });
@@ -578,6 +593,9 @@ impl NcApp {
         });
         ui.add_space(8.0);
         hint(ui, &pal, tr(lang, "about_credits"));
+        if recheck {
+            self.recheck_update();
+        }
         if demo {
             self.demo_at = Some(0);
         }

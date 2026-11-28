@@ -24,6 +24,7 @@ mod onboarding;
 mod system;
 mod tabs;
 mod templates;
+mod updates;
 mod webpub;
 pub use system::*;
 pub use templates::{note_template_text, note_templates, template_results};
@@ -76,6 +77,8 @@ pub struct Prefs {
     pub onboarded: bool,
     /// The person asked not to see the demo window at start up again.
     pub demo_seen: bool,
+    /// Asks GitHub once at start whether a newer version exists.
+    pub check_updates: bool,
     /// Open tabs of the last session (`Target::key`), with the active one and the workspace they belong to.
     pub tabs: Vec<String>,
     pub active_tab: usize,
@@ -114,6 +117,7 @@ impl Default for Prefs {
             backup_minutes: 1440,
             onboarded: false,
             demo_seen: false,
+            check_updates: true,
             tabs: Vec::new(),
             active_tab: 0,
             tabs_workspace: None,
@@ -235,6 +239,10 @@ pub struct NcApp {
     /// What is published, and where (kept in the app data folder, not in the notes).
     pub pubs: crate::publish::Store,
     pub publishing: Option<std::sync::mpsc::Receiver<crate::publish::Msg>>,
+    /// The update check: the running request, whether it ran, and the newer release it found.
+    pub update_rx: Option<std::sync::mpsc::Receiver<Option<notecraft_ai::update::Release>>>,
+    pub update_done: bool,
+    pub update_found: Option<notecraft_ai::update::Release>,
     /// The page to publish again once the web address name is set.
     pub pub_retry: Option<(String, bool)>,
     pub subdomain: Option<SubdomainDlg>,
@@ -319,6 +327,9 @@ impl NcApp {
             publish_cfg: Default::default(),
             pubs: crate::publish::Store::load(),
             publishing: None,
+            update_rx: None,
+            update_done: false,
+            update_found: None,
             pub_retry: None,
             subdomain: None,
             pub_guard: None,
@@ -924,6 +935,7 @@ impl eframe::App for NcApp {
         self.poll_reminders(&ctx);
         self.poll_import(&ctx);
         self.poll_publish(&ctx);
+        self.poll_update(&ctx);
         self.subdomain_window(&ctx);
         self.pub_guard_window(&ctx);
         self.demo_window(&ctx);
