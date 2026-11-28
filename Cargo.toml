@@ -19,3 +19,8 @@ tempfile = "3"
 
 [profile.release]
 opt-level = 3
+
+# winit 0.30.13 with one change on macOS: text sent by the emoji picker is passed on instead of dropped
+# (vendor/winit/NOTECRAFT-PATCH.md)
+[patch.crates-io]
+winit = { path = "vendor/winit" }

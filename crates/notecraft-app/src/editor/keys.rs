@@ -333,6 +333,23 @@ impl EditorState {
             }
             return;
         }
+        // Shift+← Shift+→ (and with ⌥, a word): the selection grows over the visible text only. Left to
+        // egui it would walk through every hidden character of a colour, bold or link marker.
+        let (alt, command) = ctx.input(|inp| (inp.modifiers.alt, inp.modifiers.command || inp.modifiers.ctrl));
+        if shift && !command {
+            for (right, key) in [(true, Key::ArrowRight), (false, Key::ArrowLeft)] {
+                let mods = if alt { Modifiers::ALT | Modifiers::SHIFT } else { Modifiers::SHIFT };
+                if consume(mods, key) {
+                    let head = cursor_head(ctx, id).unwrap_or(caret.1);
+                    let anchor = cursor_anchor(ctx, id).unwrap_or(head);
+                    let text = &blocks[i].text;
+                    let to =
+                        if alt { inline::step_word(text, head, right) } else { inline::step_caret(text, head, right) };
+                    self.focus = Some((bid, Caret::Select(anchor, to)));
+                    return;
+                }
+            }
+        }
         if consume(Modifiers::NONE, Key::Tab) {
             self.indent(blocks, i, true, env, out);
             return;

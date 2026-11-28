@@ -28,6 +28,10 @@ Checks run by CI (`.github/workflows/ci.yml`): `cargo fmt --check`, `cargo clipp
 
 Installing an update is manual (DMG or `scripts/install-macos.sh`). Notes are plain folders, so an update never touches them. `scripts/bundle-macos.sh` signs the app with a self-signed `NoteCraft Local` code-signing certificate when one is in the login keychain, and falls back to ad hoc otherwise. A stable identity keeps the Keychain and microphone permissions across rebuilds; an ad hoc build changes identity on every install, so macOS asks again.
 
+## Vendored winit
+
+`vendor/winit` is winit 0.30.13 with one change on macOS (see `vendor/winit/NOTECRAFT-PATCH.md`): the emoji and symbol picker (Control Command Space) and dictation send text outside any key press, which upstream drops; the patch passes it on as an IME commit so egui inserts it. The root `Cargo.toml` points to it with `[patch.crates-io]`. Remove both once a winit release fixes it.
+
 ## Crates
 
 | Crate | Role |

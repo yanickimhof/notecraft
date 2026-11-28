@@ -766,3 +766,24 @@ fn down_from_a_block_range_lands_below_the_range_and_up_above_it() {
     settle(&mut h);
     assert_eq!(h.state().0.selected, Some(ids[1]));
 }
+
+#[test]
+fn shift_arrows_select_over_colour_markers_one_visible_character_at_a_time() {
+    let text = "a <span style=\"color:red\">TBD</span> b";
+    let a = Block::new(BlockKind::Paragraph, text);
+    let aid = a.id;
+    let mut h = editor_harness(vec![a]);
+    h.state_mut().0.focus = Some((aid, Caret::At(2)));
+    for _ in 0..3 {
+        h.run();
+    }
+    // T, B, D, then the space after the closing marker: four presses, not one per hidden character
+    for _ in 0..4 {
+        h.event(key_event(Key::ArrowRight, egui::Modifiers::SHIFT));
+        h.run();
+        h.run();
+    }
+    let id = text_id(aid);
+    assert_eq!(cursor_anchor(&h.ctx, id), Some(2));
+    assert_eq!(cursor_head(&h.ctx, id), Some(text.chars().count() - 1));
+}
