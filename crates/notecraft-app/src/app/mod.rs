@@ -242,6 +242,8 @@ pub struct NcApp {
     /// The update check: the running request, whether it ran, and the newer release it found.
     pub update_rx: Option<std::sync::mpsc::Receiver<Option<notecraft_ai::update::Release>>>,
     pub update_done: bool,
+    /// The last check reached GitHub (false: it failed, so nothing can be said about updates).
+    pub update_ok: bool,
     pub update_found: Option<notecraft_ai::update::Release>,
     /// The page to publish again once the web address name is set.
     pub pub_retry: Option<(String, bool)>,
@@ -329,6 +331,7 @@ impl NcApp {
             publishing: None,
             update_rx: None,
             update_done: false,
+            update_ok: false,
             update_found: None,
             pub_retry: None,
             subdomain: None,

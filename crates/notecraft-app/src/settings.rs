@@ -579,8 +579,15 @@ impl NcApp {
             self.prefs.check_updates = check;
             if let Some(r) = &self.update_found {
                 ui.label(RichText::new(format!("{} · {}", tr(lang, "update_available"), r.version)).color(pal.accent));
-            } else if self.update_done && check {
-                ui.label(RichText::new(tr(lang, "update_uptodate")).color(pal.text_faint));
+            } else if check {
+                let key = if !self.update_done {
+                    "update_checking"
+                } else if self.update_ok {
+                    "update_uptodate"
+                } else {
+                    "update_failed"
+                };
+                ui.label(RichText::new(tr(lang, key)).color(pal.text_faint));
             }
             row_divider(ui, &pal);
             setting_row(ui, &pal, tr(lang, "about_license_title"), "", |ui| {

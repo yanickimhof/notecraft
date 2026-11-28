@@ -95,6 +95,8 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("update_row", "Check for updates", "Rechercher les mises à jour"),
     ("update_sub", "Asks GitHub once at start which version is the latest. Nothing about you is sent.", "Demande une fois au démarrage à GitHub quelle est la dernière version. Rien sur vous n'est envoyé."),
     ("update_now", "Check now", "Vérifier"),
+    ("update_checking", "Checking…", "Vérification…"),
+    ("update_failed", "Could not reach GitHub (offline, or a proxy blocks it).", "GitHub est injoignable (hors ligne, ou un proxy le bloque)."),
     ("update_uptodate", "You are up to date.", "Vous êtes à jour."),
     ("about_license", "Free for non-commercial use (PolyForm Noncommercial)", "Libre pour un usage non commercial (PolyForm Noncommercial)"),
     ("your_data", "Your data", "Vos données"),

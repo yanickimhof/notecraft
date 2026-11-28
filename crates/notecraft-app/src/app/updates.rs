@@ -23,6 +23,7 @@ impl NcApp {
             Ok(found) => {
                 self.update_rx = None;
                 self.update_done = true;
+                self.update_ok = found.is_some();
                 self.update_found =
                     found.filter(|r| notecraft_ai::update::is_newer(notecraft_core::version(), &r.version));
             }
@@ -36,6 +37,7 @@ impl NcApp {
     /// Asks again (the "Check now" button).
     pub fn recheck_update(&mut self) {
         self.update_done = false;
+        self.update_ok = false;
         self.update_found = None;
     }
 }
