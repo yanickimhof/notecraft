@@ -19,7 +19,21 @@ fn main() {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_else(|| "unknown".into());
     println!("cargo:rustc-env=NOTECRAFT_COMMIT={commit}");
+    // the commit shown in Settings, About must follow new commits: HEAD itself only names the branch, so
+    // watch the branch file too (or packed-refs once git has packed it); a missing file would rebuild every time
     println!("cargo:rerun-if-changed=../../.git/HEAD");
+    let git_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../.git");
+    if let Ok(head) = std::fs::read_to_string(git_dir.join("HEAD")) {
+        if let Some(reference) = head.strip_prefix("ref: ") {
+            let branch = format!(".git/{}", reference.trim());
+            if git_dir.join("..").join(&branch).exists() {
+                println!("cargo:rerun-if-changed=../../{branch}");
+            }
+        }
+    }
+    if git_dir.join("packed-refs").exists() {
+        println!("cargo:rerun-if-changed=../../.git/packed-refs");
+    }
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let svg_path = manifest.join("../../assets/icon.svg");
     println!("cargo:rerun-if-changed={}", svg_path.display());
