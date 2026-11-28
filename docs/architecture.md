@@ -10,7 +10,7 @@ NøteCraft is a Cargo workspace. The core has no UI dependency, so the app, the 
 | `notecraft-app` | Desktop app (eframe and egui): sidebar, page view, block editor, database views, quick finder, AI panel, settings, first launch assistant (`app/onboarding.rs`) and the built in demo window (`demo.rs`) |
 | `notecraft-cli` | `notecraft` command: `reindex`, `search`, `import`, `export`, `bench`, `snapshots`, `restore`, `version` |
 | `notecraft-mcp` | MCP server over stdio, optional `--read-only`, `--allow-delete`, `--scope` |
-| `notecraft-ai` | AI engines (Ollama on the Mac, Claude, OpenAI and Grok APIs), API keys in the macOS Keychain, prompts |
+| `notecraft-ai` | AI engines (Ollama on the Mac, Claude, OpenAI and Grok APIs), API keys in the macOS Keychain, prompts, review markers that protect tables and code, streamed local answers |
 | `notecraft-meeting` | Meeting notes: audio capture, chunking, Whisper transcription, model downloads, microphone permission |
 
 Dependencies point one way: `app`, `cli` and `mcp` depend on `core`; `app` also depends on `ai` and `meeting`. The core never depends on them. Large modules are folders (`app/`, `editor/`, `dbview/`, `workspace/`) whose helpers and tests sit in their own files.

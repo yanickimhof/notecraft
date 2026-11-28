@@ -77,8 +77,8 @@ Quick finder with ⌘P and full text search across everything.
 ## Work with AI (optional)
 
 - Summarise, continue, improve or translate text, or ask a question about a page (⌘J).
-- **Proofread a page**: spelling and grammar only. The result is applied at once and ⌘Z undoes it (answers to questions stay in the panel); if figures or dates differ from the original, you see a draft to check first. Transcripts, databases, images and code are never sent and come back untouched. With a local model a long page can take a few minutes.
-- Runs on your Mac with Ollama (nothing leaves your computer) or with your own Claude, ChatGPT (OpenAI) or Grok (xAI) API key. Pick the engine with its icon in Settings, then the model from a menu grouped by family. You always see the result first: nothing changes until you click.
+- **Proofread a page**: spelling and grammar only. The result is applied at once and ⌘Z undoes it (answers to questions stay in the panel); if figures or dates differ from the original, you see a draft to check first. Transcripts, databases, images and code are never sent and come back untouched. With a local model a long page can take a few minutes; if the counter of characters keeps rising, the model is working.
+- Runs on your Mac with Ollama (nothing leaves your computer) or with your own Claude, ChatGPT (OpenAI) or Grok (xAI) API key. Pick the engine with its icon in Settings, then the model from a menu grouped by family. The result is applied to the page at once and ⌘Z undoes it; answers to questions stay in the panel. While a local model works, the panel shows the seconds, the part and the number of characters produced, so you can see it is progressing.
 - Connect Claude Desktop or Claude Code (Settings, MCP server) so they can read and edit your notes through MCP, with permissions you choose: read only, read and write, or deletion allowed, and optionally limited to one page tree.
 
 ## Meeting notes (optional)

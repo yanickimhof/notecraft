@@ -102,7 +102,9 @@ Engines, chosen in Settings (icons: this Mac, Claude, OpenAI, Grok), each with a
 
 - **Grok (xAI)** with your own key, stored the same way (account `grok-api-key`) or taken from `XAI_API_KEY`; xAI's OpenAI compatible API at `https://api.x.ai`, default model `grok-4`.
 
-The answer is always a draft: insert below, replace the selection, copy or discard.
+Review actions (Summarize, Improve, Proofread, Translate) are applied to the page as soon as the answer arrives, as one undoable edit (⌘Z); Ask stays in the panel as a draft, and so does any answer whose figures or dates differ from the original. Before sending, `ai_review::prepare` replaces tables, databases, images, code and transcripts with `@@KEEPn@@` markers and `restore` puts them back, so they never reach the engine and cannot be altered.
+
+Local requests (Ollama) are streamed (`stream: true`, one JSON line per chunk). The panel shows seconds, part and characters received, and the timeout applies to silence between chunks rather than to the whole answer. They bypass any system or corporate proxy (`local_agent`), which would otherwise intercept `localhost`. Models that echo the request (`Page title:`, `<page>` tags) are cleaned by `clean_answer`. Cloud engines still answer in one piece.
 
 ## Meeting notes
 
@@ -156,5 +158,5 @@ Zip extraction (`import_zip.rs`) refuses paths that leave the target folder and 
 - Merging is per block: two people editing the same block make a conflict. A database's `schema.json` edited in two places keeps one version.
 - One window with tabs. No comments or sharing yet. Formulas and rollups are computed in memory (`formula.rs`) and never written to the Markdown files.
 - Reminders only fire while the app is running. Memory grows by roughly 6 MB per full reload at 25 000 documents (cause not established).
-- AI answers arrive whole (no streaming) and a request cannot be cancelled once sent.
+- Local AI answers are streamed; cloud answers arrive whole. A request cannot be cancelled once sent.
 - Images are previewed; PDFs and other files open in their default app.

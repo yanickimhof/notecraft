@@ -8,6 +8,7 @@ Merges the 0.5.x releases.
 
 ### Added
 - AI proofreading of a page, with a short AI menu (Summarize, Improve, Proofread, Translate, Ask). The result is applied at once and Command Z undoes it; answers to questions stay in the panel. Transcripts, databases, images and code are never sent to the AI.
+- Local AI shows its progress (seconds, part, characters) and no longer times out while the model is still writing.
 - Network guard: one gatekeeper for every connection of the app, a network lockdown switch and an activity log. The local model stays on this Mac.
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish.
 - Send a page by email: the default mail app opens with the title, and the formatted page is ready to paste.
