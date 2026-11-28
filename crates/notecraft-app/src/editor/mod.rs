@@ -224,6 +224,12 @@ pub struct EditorState {
     at_last_row: bool,
     /// Index of the block under the pointer (dropped files go after it).
     pub insert_hint: Option<usize>,
+    /// Index of the block that holds (or last held) the text caret.
+    caret_hint: Option<usize>,
+    /// First pointer position seen while files hover over the window, and whether it moved since:
+    /// macOS sends no pointer moves during a drag from the Finder, so a stale position must not decide.
+    hover_start: Option<Option<egui::Pos2>>,
+    drop_by_pointer: bool,
     /// Heading to scroll to (clicked in a table of contents).
     toc_target: Option<u64>,
     /// Last text selection in a block: (block, start char, end char). Used by AI actions.
@@ -300,6 +306,9 @@ impl Default for EditorState {
             at_first_row: true,
             at_last_row: true,
             insert_hint: None,
+            caret_hint: None,
+            hover_start: None,
+            drop_by_pointer: false,
             toc_target: None,
             last_selection: None,
             link_edit: None,
@@ -687,6 +696,9 @@ impl EditorState {
                 self.slash = None;
             }
         }
+        if focused_idx.is_some() {
+            self.caret_hint = focused_idx;
+        }
         if let Some(i) = focused_idx {
             self.handle_keys(&ctx, blocks, i, env, &mut out);
         } else if self.selected.is_some() {
@@ -839,10 +851,28 @@ impl EditorState {
                 deferred.push(Deferred::Shortcut(i, kind, strip));
             }
         }
-        // files being dragged over the window: a line shows where they will land (after the block under the pointer)
-        if ctx.input(|i| !i.raw.hovered_files.is_empty()) {
+        // files being dragged over the window: a line shows where they will land (after the block under the
+        // pointer once it moves, otherwise after the block with the caret)
+        let hovering_files = ctx.input(|i| !i.raw.hovered_files.is_empty());
+        if hovering_files {
+            let pos = ctx.input(|i| i.pointer.hover_pos());
+            match self.hover_start {
+                None => {
+                    self.hover_start = Some(pos);
+                    self.drop_by_pointer = false;
+                }
+                Some(p0) => {
+                    if p0 != pos {
+                        self.drop_by_pointer = true;
+                    }
+                }
+            }
+        } else if ctx.input(|i| i.raw.dropped_files.is_empty()) {
+            self.hover_start = None;
+        }
+        if hovering_files {
             let last = blocks.len().saturating_sub(1);
-            let at = self.insert_hint.unwrap_or(last).min(last);
+            let at = self.drop_hint().unwrap_or(last).min(last);
             if let Some((_, r)) = rects.iter().find(|(j, _)| *j == at).or(rects.last()) {
                 let y = r.max.y + 2.0;
                 let x0 = r.min.x + gutter;
@@ -1509,6 +1539,16 @@ impl EditorState {
                 }
                 r.response
             }
+        }
+    }
+
+    /// Block after which dropped files go: the one under the pointer if it moved during the drag,
+    /// otherwise the one with the caret.
+    pub fn drop_hint(&self) -> Option<usize> {
+        if self.drop_by_pointer {
+            self.insert_hint.or(self.caret_hint)
+        } else {
+            self.caret_hint.or(self.insert_hint)
         }
     }
 

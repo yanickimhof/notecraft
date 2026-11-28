@@ -1048,3 +1048,41 @@ fn shortcuts_format_the_selected_word_when_the_page_has_two_tables() {
     assert_eq!(seen[3], "| ahello world | b |", "{seen:?}");
     assert_eq!(seen[4], "| ahello *world* | b |", "{seen:?}");
 }
+
+#[test]
+fn enter_then_a_star_and_a_space_starts_a_bullet_list() {
+    let a = Block::new(BlockKind::Paragraph, "Liste de tâches");
+    let aid = a.id;
+    let mut h = editor_harness(vec![a]);
+    h.state_mut().0.focus = Some((aid, Caret::End));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(key_event(Key::Enter, egui::Modifiers::NONE));
+    for _ in 0..3 {
+        h.run();
+    }
+    for t in ["*", " "] {
+        h.event(egui::Event::Text(t.into()));
+        for _ in 0..4 {
+            h.run();
+        }
+    }
+    h.event(egui::Event::Text("tâche une".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    let kinds: Vec<_> = h.state().1.iter().map(|b| (b.kind.clone(), b.text.clone())).collect();
+    assert_eq!(
+        kinds,
+        vec![(BlockKind::Paragraph, "Liste de tâches".to_string()), (BlockKind::Bulleted, "tâche une".to_string())]
+    );
+}
+
+#[test]
+fn files_dropped_without_a_pointer_move_land_after_the_caret_block() {
+    let mut s = EditorState { insert_hint: Some(2), caret_hint: Some(7), ..EditorState::default() };
+    assert_eq!(s.drop_hint(), Some(7));
+    s.drop_by_pointer = true;
+    assert_eq!(s.drop_hint(), Some(2));
+}

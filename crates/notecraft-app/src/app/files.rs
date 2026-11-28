@@ -35,7 +35,7 @@ impl NcApp {
             return;
         }
         let len = Self::blocks_mut(ws, &t).map(|b| b.len()).unwrap_or(0);
-        let at = index.unwrap_or_else(|| self.editor.insert_hint.map(|i| i + 1).unwrap_or(len));
+        let at = index.unwrap_or_else(|| self.editor.drop_hint().map(|i| i + 1).unwrap_or(len));
         self.insert_blocks(at, replace, new);
     }
 
