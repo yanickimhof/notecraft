@@ -1086,3 +1086,20 @@ fn files_dropped_without_a_pointer_move_land_after_the_caret_block() {
     s.drop_by_pointer = true;
     assert_eq!(s.drop_hint(), Some(2));
 }
+
+#[test]
+fn the_new_line_after_enter_gets_the_caret_without_waiting_for_another_event() {
+    let a = Block::new(BlockKind::Paragraph, "Liste de tâches");
+    let aid = a.id;
+    let mut h = editor_harness(vec![a]);
+    h.state_mut().0.focus = Some((aid, Caret::End));
+    h.run();
+    h.event(key_event(Key::Enter, egui::Modifiers::NONE));
+    // `run` stops as soon as nothing asks for another frame
+    h.run();
+    assert!(h.state().0.focus.is_none(), "the caret request of the new line is still pending");
+    h.event(egui::Event::Text("x".into()));
+    h.run();
+    let texts: Vec<_> = h.state().1.iter().map(|b| b.text.clone()).collect();
+    assert_eq!(texts, vec!["Liste de tâches".to_string(), "x".to_string()]);
+}

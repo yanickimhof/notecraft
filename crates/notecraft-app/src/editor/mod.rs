@@ -915,6 +915,11 @@ impl EditorState {
         for d in deferred {
             self.apply_deferred(blocks, d, env, &mut out);
         }
+        // a focus request made in this frame (the new line after Enter) is applied when its block is drawn,
+        // which can be next frame: without a repaint, the next key would still go to the old block
+        if self.focus.is_some_and(|(b, _)| blocks.iter().any(|x| x.id == b)) {
+            ctx.request_repaint();
+        }
         out
     }
 
