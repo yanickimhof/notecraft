@@ -82,16 +82,29 @@ pub fn initialize(app: &NSApplication) {
     app_menu.addItem(&quit_item);
     app_menu_item.setSubmenu(Some(&app_menu));
 
-    // NøteCraft patch: an Edit menu holding only "Emoji & Symbols". The emoji key of the keyboard and the
+    // NøteCraft patch: a hidden Edit menu holding only "Emoji & Symbols". The emoji key of the keyboard and the
     // menu item look for it; without it nothing opens. No key equivalents, so text editing is unchanged.
     let edit_menu_item = NSMenuItem::new(mtm);
     menubar.addItem(&edit_menu_item);
     let edit_menu = NSMenu::new(mtm);
     unsafe { edit_menu.setTitle(ns_string!("Edit")) };
-    let emoji_item =
-        menu_item(mtm, ns_string!("Emoji & Symbols"), Some(sel!(orderFrontCharacterPalette:)), None);
+    // Ctrl+Cmd+Space (the system shortcut, which the emoji key of third party keyboards sends) is the key equivalent
+    let emoji_item = menu_item(
+        mtm,
+        ns_string!("Emoji & Symbols"),
+        Some(sel!(orderFrontCharacterPalette:)),
+        Some(KeyEquivalent {
+            key: ns_string!(" "),
+            masks: Some(
+                NSEventModifierFlags::NSEventModifierFlagControl
+                    | NSEventModifierFlags::NSEventModifierFlagCommand,
+            ),
+        }),
+    );
     edit_menu.addItem(&emoji_item);
     edit_menu_item.setSubmenu(Some(&edit_menu));
+    // Hidden from the menu bar: only its key equivalent is needed
+    unsafe { edit_menu_item.setHidden(true) };
 
     unsafe { app.setServicesMenu(Some(&services_menu)) };
     app.setMainMenu(Some(&menubar));

@@ -30,6 +30,7 @@ A workspace is a folder you choose. Each page is a Markdown file inside it, so y
 - Select several lines (⇧↓ or drag the handles) and act on all of them at once: turn into, colour, group in a section, copy, cut, duplicate, move, delete. A text colour and a background colour can be combined.
 - **Page templates**: the **Templates** section of the sidebar holds ordinary pages that you write once and paste into any page with `/` then Template; `{{date}}` becomes today's date. A new workspace starts with one example (meeting minutes) that you can edit or delete. Pick one by clicking its row or with the arrow keys and Enter. They are separate from the meeting templates described below.
 - **Simple tables**: select several cells (drag, shift click, the grip at the left of a row or the arrow above a column) and format them together with the small bar: bold, italic, underline, colours and cell background.
+- **Emoji**: the emoji key of your keyboard, or Ctrl ⌘ Space, opens the Apple picker and inserts into pages and tables.
 - Link pages with `[[Page name]]`; the other page shows a backlink.
 - Icons (emoji in colour, and the flags of every country, with search), covers, favourites, trash with restore.
 - **Tabs**: ⌘T opens a tab, ⌘-click on a page opens it in a new tab, ⌘W closes it. Tabs come back when you restart.

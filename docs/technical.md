@@ -30,7 +30,7 @@ Installing an update is manual (DMG or `scripts/install-macos.sh`). Notes are pl
 
 ## Vendored winit
 
-`vendor/winit` is winit 0.30.13 with one change on macOS (see `vendor/winit/NOTECRAFT-PATCH.md`): the emoji and symbol picker (Control Command Space) and dictation send text outside any key press, which upstream drops; the patch passes it on as an IME commit so egui inserts it. It also adds an Edit menu with the single item Emoji & Symbols, which the keyboard's emoji key looks for. The root `Cargo.toml` points to it with `[patch.crates-io]`. Remove both once a winit release fixes it.
+`vendor/winit` is winit 0.30.13 with one change on macOS (see `vendor/winit/NOTECRAFT-PATCH.md`): the emoji and symbol picker (Control Command Space) and dictation send text outside any key press, which upstream drops; the patch passes it on as an IME commit so egui inserts it. It also adds a hidden Edit menu with the single item Emoji & Symbols (Control Command Space), which the keyboard's emoji key needs. The root `Cargo.toml` points to it with `[patch.crates-io]`. Remove both once a winit release fixes it.
 
 ## Crates
 

@@ -12,6 +12,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - Publish a page or a section on the web at a private link, with Preview, Update and Unpublish.
 - Send a page by email: the default mail app opens with the title, and the formatted page is ready to paste.
 - Flags of every country in the icon picker, with search. Apple colour emoji display in colour.
+- The Apple emoji picker works in pages and tables (emoji key of the keyboard or Ctrl ⌘ Space).
 - Grok as a fourth AI engine, next to Claude, ChatGPT and the local model.
 - Meeting notes with one transcription template per kind of meeting; speakers told apart, renamed and merged.
 - Page templates, a Templates section, and a one minute demo with a first launch assistant.
