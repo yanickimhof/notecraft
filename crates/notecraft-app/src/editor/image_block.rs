@@ -21,6 +21,7 @@ impl EditorState {
         let blocks_align = blocks[i].align;
         let mut new_align: Option<u8> = None;
         let mut new_width: Option<u16> = None;
+        let mut clear_caption = false;
         let mut size_began = false;
         // width of the picture and its left padding: the caption lines up with it
         let mut geom = (width, 0.0f32);
@@ -102,8 +103,11 @@ impl EditorState {
                         }
                     }
                     // the image bar: alignment, size, caption, replace, delete
-                    let near_bar =
-                        self.img_bar.is_some_and(|(b, r)| b == bid && ui.rect_contains_pointer(r.expand(6.0)));
+                    // the bar is a layer above the page, so `rect_contains_pointer` is false on it: use the raw position
+                    let pointer = ui.input(|i| i.pointer.hover_pos());
+                    let near_bar = self
+                        .img_bar
+                        .is_some_and(|(b, r)| b == bid && pointer.is_some_and(|p| r.expand(6.0).contains(p)));
                     if resp.hovered() || self.selected == Some(bid) || active || near_bar {
                         let pos = egui::pos2(resp.rect.center().x, resp.rect.min.y + 8.0);
                         let current = if blocks_width == 0 { 100 } else { blocks_width };
@@ -128,12 +132,15 @@ impl EditorState {
                                             }
                                         }
                                         ui.separator();
-                                        if ui
-                                            .selectable_label(!blocks[i].text.is_empty(), tr(env.lang, "img_caption"))
-                                            .clicked()
-                                        {
-                                            self.caption_open = Some(bid);
-                                            self.focus = Some((bid, Caret::End));
+                                        // the caption button is a switch: it opens the field, or removes the caption
+                                        let has_caption = !blocks[i].text.is_empty() || self.caption_open == Some(bid);
+                                        if ui.selectable_label(has_caption, tr(env.lang, "img_caption")).clicked() {
+                                            if has_caption {
+                                                clear_caption = true;
+                                            } else {
+                                                self.caption_open = Some(bid);
+                                                self.focus = Some((bid, Caret::End));
+                                            }
                                         }
                                         if ui.button(tr(env.lang, "img_replace")).clicked() {
                                             out.actions.push(Action::PickFile { index: i, replace: true, image: true });
@@ -201,6 +208,17 @@ impl EditorState {
         if size_began {
             let snap = blocks.to_vec();
             self.record(env.key, &snap, Some(&format!("w{bid}")));
+        }
+        if clear_caption {
+            let snap = blocks.to_vec();
+            self.record(env.key, &snap, None);
+            blocks[i].text.clear();
+            self.caption_open = None;
+            if self.focused_block == Some(bid) {
+                self.focused_block = None;
+            }
+            ui.ctx().memory_mut(|m| m.surrender_focus(text_id(bid)));
+            out.changed = true;
         }
         if let Some(a) = new_align {
             if blocks[i].align != a {

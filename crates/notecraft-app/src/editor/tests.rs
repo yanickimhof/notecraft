@@ -1150,3 +1150,21 @@ fn the_image_bar_changes_alignment_and_size() {
     }
     assert_eq!(h.state().1[0].width, 50);
 }
+
+#[test]
+fn the_caption_button_removes_the_caption() {
+    use egui_kittest::kittest::Queryable as _;
+    let img = Block::new(BlockKind::Image { path: "../../docs/screenshots/ai.png".into() }, "legend");
+    let bid = img.id;
+    let mut h = editor_harness(vec![img]);
+    h.state_mut().0.selected = Some(bid);
+    for _ in 0..4 {
+        h.step();
+    }
+    h.get_by_label("Caption").click();
+    for _ in 0..4 {
+        h.step();
+    }
+    assert_eq!(h.state().1[0].text, "");
+    assert!(h.state().0.caption_open.is_none());
+}
