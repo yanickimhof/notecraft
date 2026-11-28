@@ -24,7 +24,7 @@ A workspace is a folder you choose. Each page is a Markdown file inside it, so y
 
 - Pages inside pages, shown as a tree you can drag around.
 - Headings, lists, to-dos, toggles, quotes, callouts, code, dividers, images and files. Type `/` to add anything, or use the usual Markdown shortcuts.
-- Images can be resized by dragging the round handle on a corner (double click it to go back to the natural size) and aligned left, centre or right from the right-click menu. The size and place are saved in the Markdown file as a small comment, and kept on the published page.
+- Hover or select an image to get its bar: align left, centre or right, size (25, 50, 75, 100 %), caption, replace, delete. The caption is optional: it only appears when you ask for it, and lines up with the picture. You can still drag the round handle on a corner to resize (double click it to go back to the natural size), and the right-click menu still aligns. The size and place are saved in the Markdown file as a small comment, and kept on the published page.
 - Bold, italic, underline, strikethrough, code, links and colours (also on part of a text).
 - Columns (drag a line to the right edge of another to make one), a table of contents, simple tables, web bookmarks and whole databases shown inside a page.
 - Select several lines (⇧↓ or drag the handles) and act on all of them at once: turn into, colour, group in a section, copy, cut, duplicate, move, delete. A text colour and a background colour can be combined.

@@ -1103,3 +1103,50 @@ fn the_new_line_after_enter_gets_the_caret_without_waiting_for_another_event() {
     let texts: Vec<_> = h.state().1.iter().map(|b| b.text.clone()).collect();
     assert_eq!(texts, vec!["Liste de tâches".to_string(), "x".to_string()]);
 }
+
+#[test]
+fn an_image_caption_is_optional_and_opens_from_the_image_bar() {
+    use egui_kittest::kittest::Queryable as _;
+    let img = Block::new(BlockKind::Image { path: "../../docs/screenshots/ai.png".into() }, "");
+    let bid = img.id;
+    let mut h = editor_harness(vec![img]);
+    for _ in 0..3 {
+        h.run();
+    }
+    let inputs = |h: &egui_kittest::Harness<'static, (EditorState, Vec<Block>)>| {
+        h.query_all_by_role(egui::accesskit::Role::TextInput).count()
+    };
+    assert_eq!(inputs(&h), 0, "an empty caption stays hidden");
+    h.state_mut().0.selected = Some(bid);
+    for _ in 0..3 {
+        h.run();
+    }
+    h.get_by_label("Caption").click();
+    // the caption field keeps the caret blinking, so `run` would never settle: step instead
+    for _ in 0..6 {
+        h.step();
+    }
+    assert_eq!(inputs(&h), 1, "the bar opens the caption field");
+}
+
+#[test]
+fn the_image_bar_changes_alignment_and_size() {
+    use egui_kittest::kittest::Queryable as _;
+    let img = Block::new(BlockKind::Image { path: "../../docs/screenshots/ai.png".into() }, "legend");
+    let bid = img.id;
+    let mut h = editor_harness(vec![img]);
+    h.state_mut().0.selected = Some(bid);
+    for _ in 0..4 {
+        h.run();
+    }
+    h.get_by_label("Right").click();
+    for _ in 0..3 {
+        h.run();
+    }
+    assert_eq!(h.state().1[0].align, 2);
+    h.get_by_label("50%").click();
+    for _ in 0..3 {
+        h.run();
+    }
+    assert_eq!(h.state().1[0].width, 50);
+}

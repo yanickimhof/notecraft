@@ -226,6 +226,10 @@ pub struct EditorState {
     pub insert_hint: Option<usize>,
     /// Index of the block that holds (or last held) the text caret.
     caret_hint: Option<usize>,
+    /// Image whose caption field is open (empty captions are hidden otherwise).
+    caption_open: Option<u64>,
+    /// Image bar of the last frame: (image block, rectangle), so it stays while the pointer is on it.
+    img_bar: Option<(u64, Rect)>,
     /// First pointer position seen while files hover over the window, and whether it moved since:
     /// macOS sends no pointer moves during a drag from the Finder, so a stale position must not decide.
     hover_start: Option<Option<egui::Pos2>>,
@@ -307,6 +311,8 @@ impl Default for EditorState {
             at_last_row: true,
             insert_hint: None,
             caret_hint: None,
+            caption_open: None,
+            img_bar: None,
             hover_start: None,
             drop_by_pointer: false,
             toc_target: None,

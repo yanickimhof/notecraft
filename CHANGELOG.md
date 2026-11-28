@@ -21,6 +21,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - Database tables: resizable columns, wrapped text, keyboard moves between cells, editable tag colours.
 - Pasting from Outlook, Word or a web page keeps headings, lists, bold, links and tables.
 - Actions on several selected lines, columns by dragging a line beside another, resizable images, today's date shortcut, cover gradients.
+- Images get a bar on hover (alignment, size, caption, replace, delete); the caption is optional and lines up with the picture.
 - Command click on a link opens it. Backups thinned like Time Machine. Foldable sidebar sections.
 
 ### Changed
