@@ -580,7 +580,9 @@ impl NcApp {
             if let Some(r) = &self.update_found {
                 ui.label(RichText::new(format!("{} · {}", tr(lang, "update_available"), r.version)).color(pal.accent));
             } else if check {
-                let key = if !self.update_done {
+                let key = if notecraft_net::lockdown() {
+                    "update_locked"
+                } else if !self.update_done {
                     "update_checking"
                 } else if self.update_ok {
                     "update_uptodate"

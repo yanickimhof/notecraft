@@ -95,6 +95,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("update_row", "Check for updates", "Rechercher les mises à jour"),
     ("update_sub", "Asks GitHub once at start which version is the latest. Nothing about you is sent.", "Demande une fois au démarrage à GitHub quelle est la dernière version. Rien sur vous n'est envoyé."),
     ("update_now", "Check now", "Vérifier"),
+    ("update_locked", "Network lockdown is on: no check is made.", "Le verrouillage réseau est actif : aucune vérification."),
     ("update_checking", "Checking…", "Vérification…"),
     ("update_failed", "Could not reach GitHub (offline, or a proxy blocks it).", "GitHub est injoignable (hors ligne, ou un proxy le bloque)."),
     ("update_uptodate", "You are up to date.", "Vous êtes à jour."),
