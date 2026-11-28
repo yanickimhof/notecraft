@@ -58,7 +58,7 @@ Quick finder with ⌘P and full text search across everything.
 
 - **Private pages**: lock a page with a passphrase (strong encryption). There is no way to recover a lost passphrase.
 - **Read-only lock** for pages you do not want to change by accident.
-- **Automatic backups** with restore points, and a **version history** for each page.
+- **Automatic backups** with restore points, and a **version history** for each page. Backups are thinned over time (hourly for a day, daily for a month, weekly for a year, then yearly), and they are kept outside your notes folder.
 - Safe saving and conflict copies: a sync mishap never silently overwrites your work.
 
 ## Get things in and out

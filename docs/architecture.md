@@ -78,7 +78,7 @@ The search index remembers a fingerprint of the files when the workspace closes 
 
 ## Backups and version history
 
-`notecraft_core::backup` copies only the files that changed since the last run into an automatic snapshot (`reason == "auto"`) stored with the other snapshots outside the notes folder. A background thread in the app starts it on the configured interval. The same snapshots feed the per-page version history (`versions_of`, `version_text`, `Workspace::restore_snapshot_file`). Automatic snapshots are pruned separately from manual ones.
+`notecraft_core::backup` copies only the files that changed since the last run into an automatic snapshot (`reason == "auto"`) stored with the other snapshots outside the notes folder. A background thread in the app starts it on the configured interval. The same snapshots feed the per-page version history (`versions_of`, `version_text`, `Workspace::restore_snapshot_file`). Automatic snapshots are thinned like Time Machine (`prune_auto`: hourly for a day, daily for a month, weekly for a year, yearly after; the files only a removed snapshot held are handed to the next one, so no page vanishes). Manual snapshots and those taken before a destructive action are never thinned, but the workspace keeps at most `snapshot::KEEP` (200), oldest first. Files over 5 MB are not copied. The history window (`backups::history_ui`) gives both lists a fixed height with their own scroll; a layout test (`layout_tests`) guards against the window growing every frame, which an `egui` separator inside a modal does.
 
 ## Encrypted pages
 
