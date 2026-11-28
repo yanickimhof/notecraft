@@ -127,7 +127,12 @@ pub(super) fn paint_underlines(
         } else if s.link.is_some() || s.mention.is_some() {
             Some(pal.text_faint)
         } else if s.underline {
-            Some(if s.code { pal.text_secondary } else { color })
+            // the line takes the colour of the text it underlines
+            Some(match &s.color {
+                _ if s.code => pal.text_secondary,
+                Some(name) => pal.option_tokens(name).2,
+                None => color,
+            })
         } else {
             None
         };

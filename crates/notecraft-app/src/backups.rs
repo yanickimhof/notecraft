@@ -235,6 +235,8 @@ impl NcApp {
         let mut close = false;
         let mut restore: Option<String> = None;
         let mut picked: Option<usize> = None;
+        // the lists keep a fixed height that fits the window, so a long history scrolls instead of growing
+        let list_h = (ctx.content_rect().height() * 0.55).clamp(200.0, 460.0);
         let modal = egui::Modal::new(Id::unique("history")).show(ctx, |ui| {
             ui.set_width(720.0);
             ui.heading(tr(lang, "history"));
@@ -245,25 +247,35 @@ impl NcApp {
                 ui.horizontal_top(|ui| {
                     ui.vertical(|ui| {
                         ui.set_width(220.0);
-                        egui::ScrollArea::vertical().id_salt("history-list").max_height(360.0).show(ui, |ui| {
-                            for (k, v) in view.versions.iter().enumerate() {
-                                let why = if v.reason == backup::AUTO_REASON {
-                                    tr(lang, "backup_auto").to_string()
-                                } else {
-                                    v.reason.clone()
-                                };
-                                let label = format!("{}\n{why}", widgets::relative_time(&v.time, lang));
-                                if ui.selectable_label(view.selected == k, label).clicked() {
-                                    picked = Some(k);
+                        ui.set_height(list_h);
+                        egui::ScrollArea::vertical()
+                            .id_salt("history-list")
+                            .max_height(list_h)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                for (k, v) in view.versions.iter().enumerate() {
+                                    let why = if v.reason == backup::AUTO_REASON {
+                                        tr(lang, "backup_auto").to_string()
+                                    } else {
+                                        v.reason.clone()
+                                    };
+                                    let label = format!("{} · {why}", widgets::relative_time(&v.time, lang));
+                                    if ui.selectable_label(view.selected == k, label).clicked() {
+                                        picked = Some(k);
+                                    }
                                 }
-                            }
-                        });
+                            });
                     });
                     ui.separator();
                     ui.vertical(|ui| {
-                        egui::ScrollArea::vertical().id_salt("history-preview").max_height(360.0).show(ui, |ui| {
-                            ui.add(egui::Label::new(RichText::new(&view.preview).size(13.0)).wrap());
-                        });
+                        ui.set_height(list_h);
+                        egui::ScrollArea::vertical()
+                            .id_salt("history-preview")
+                            .max_height(list_h)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.add(egui::Label::new(RichText::new(&view.preview).size(13.0)).wrap());
+                            });
                     });
                 });
             }
