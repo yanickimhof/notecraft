@@ -17,6 +17,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com). Bug fixes are no
 - Meeting notes with one transcription template per kind of meeting; speakers told apart, renamed and merged.
 - Page templates, a Templates section, and a one minute demo with a first launch assistant.
 - Simple tables: select several cells and format them together (bold, colours, cell background).
+- In a table, Shift and the arrows carry a selection over the neighbouring cells; Command Z undoes edits in a cell.
 - Database tables: resizable columns, wrapped text, keyboard moves between cells, editable tag colours.
 - Pasting from Outlook, Word or a web page keeps headings, lists, bold, links and tables.
 - Actions on several selected lines, columns by dragging a line beside another, resizable images, today's date shortcut, cover gradients.

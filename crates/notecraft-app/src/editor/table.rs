@@ -39,7 +39,16 @@ impl EditorState {
             let n = body.chars().count();
             let (a, b) = match range {
                 Some((a, b)) if a != b => (a.min(n), b.min(n)),
-                _ => (0, n),
+                _ => {
+                    // the whole text without the markers that already wrap it, so a second press undoes the first
+                    let mask = inline::marker_mask(body);
+                    let first = mask.iter().position(|m| !m);
+                    let last = mask.iter().rposition(|m| !m);
+                    match (first, last) {
+                        (Some(f), Some(l)) => (f, l + 1),
+                        _ => (0, n),
+                    }
+                }
             };
             match f {
                 CellFormat::Fill(name) => (inline::set_fill(text, name), None),
@@ -59,6 +68,7 @@ impl EditorState {
             let range = egui::text_edit::TextEditState::load(ctx, cid)
                 .and_then(|s| s.cursor.char_range())
                 .map(|g| (g.primary.index.0.min(g.secondary.index.0), g.primary.index.0.max(g.secondary.index.0)))
+                .filter(|g| g.0 != g.1)
                 .or(self.table_range.filter(|t| (t.1, t.2) == (r, c)).map(|t| (t.3, t.4)));
             let (t, sel) = one(&cells[r][c], range);
             cells[r][c] = t;
@@ -85,6 +95,8 @@ impl EditorState {
         let bid = blocks[i].id;
         let mut cells = notecraft_core::blocks::table_cells(&blocks[i].text);
         let before = cells.clone();
+        // typing joins one undo step per burst; formats and structure changes get a step of their own
+        let mut structural = false;
         let cols = cells.first().map_or(1, Vec::len);
         let rows = cells.len();
         // column widths follow the content: a short "Date" column stays narrow, a long "Status" one grows
@@ -107,8 +119,8 @@ impl EditorState {
                     let longest = cells
                         .iter()
                         .filter_map(|r| r.get(c))
-                        .flat_map(|t| inline::split_fill(t).1.split_whitespace())
-                        .map(|w| w.chars().count())
+                        .map(|t| inline::strip(inline::split_fill(t).1))
+                        .flat_map(|t| t.split_whitespace().map(|w| w.chars().count()).collect::<Vec<_>>())
                         .max()
                         .unwrap_or(0) as f32;
                     (longest * char_w + 26.0).clamp(60.0, total * 0.4)
@@ -136,15 +148,29 @@ impl EditorState {
         let focused_cell = (0..rows)
             .flat_map(|r| (0..cols).map(move |c| (r, c)))
             .find(|&(r, c)| tctx.memory(|m| m.has_focus(Id::unique(("table-cell", bid, r, c)))));
+        let mut selected_now = false;
         if let Some((r, c)) = focused_cell {
             let cid = Id::unique(("table-cell", bid, r, c));
-            let edge: Option<(Id, bool, bool, bool, bool)> = tctx.data(|d| d.get_temp(Id::unique(("table-edge", bid))));
-            let (first, last, start, end) =
-                edge.filter(|e| e.0 == cid).map(|e| (e.1, e.2, e.3, e.4)).unwrap_or((true, true, false, false));
+            let edge: Option<(Id, bool, bool, bool, bool, bool, bool)> =
+                tctx.data(|d| d.get_temp(Id::unique(("table-edge", bid))));
+            let (first, last, start, end, at_start, at_end) = edge
+                .filter(|e| e.0 == cid)
+                .map(|e| (e.1, e.2, e.3, e.4, e.5, e.6))
+                .unwrap_or((true, true, false, false, false, false));
             let none = Modifiers::NONE;
             let mut target: Option<(usize, usize)> = None;
+            // Shift+arrow at the edge of the cell text carries on over the neighbouring cells as a cell selection
+            let mut extend: Option<(usize, usize)> = None;
             tctx.input_mut(|i| {
-                if i.consume_key(Modifiers::SHIFT, Key::Tab) {
+                if first && r > 0 && i.consume_key(Modifiers::SHIFT, Key::ArrowUp) {
+                    extend = Some((r - 1, c));
+                } else if last && r + 1 < rows && i.consume_key(Modifiers::SHIFT, Key::ArrowDown) {
+                    extend = Some((r + 1, c));
+                } else if at_start && c > 0 && i.consume_key(Modifiers::SHIFT, Key::ArrowLeft) {
+                    extend = Some((r, c - 1));
+                } else if at_end && c + 1 < cols && i.consume_key(Modifiers::SHIFT, Key::ArrowRight) {
+                    extend = Some((r, c + 1));
+                } else if i.consume_key(Modifiers::SHIFT, Key::Tab) {
                     target = if c > 0 {
                         Some((r, c - 1))
                     } else if r > 0 {
@@ -166,6 +192,10 @@ impl EditorState {
                     target = Some(if c + 1 < cols { (r, c + 1) } else { (r + 1, 0) });
                 }
             });
+            if let Some(to) = extend {
+                self.select_cells(&tctx, bid, (r, c), to);
+                selected_now = true;
+            }
             if let Some((tr, tc)) = target {
                 if tr >= rows {
                     add_row = true;
@@ -209,7 +239,25 @@ impl EditorState {
                 }
             });
             if let Some(kind) = req {
+                structural = true;
                 self.apply_cell_format(&tctx, &mut cells, bid, focused_cell, &rect_cells, CellFormat::Style(kind));
+            }
+        }
+        if let (Some((_, anchor, head)), None) = (self.table_sel.filter(|s| s.0 == bid), focused_cell) {
+            let mut to = head;
+            tctx.input_mut(|i| {
+                if i.consume_key(Modifiers::SHIFT, Key::ArrowUp) {
+                    to.0 = to.0.saturating_sub(1);
+                } else if i.consume_key(Modifiers::SHIFT, Key::ArrowDown) {
+                    to.0 = (to.0 + 1).min(rows - 1);
+                } else if i.consume_key(Modifiers::SHIFT, Key::ArrowLeft) {
+                    to.1 = to.1.saturating_sub(1);
+                } else if i.consume_key(Modifiers::SHIFT, Key::ArrowRight) {
+                    to.1 = (to.1 + 1).min(cols - 1);
+                }
+            });
+            if to != head {
+                self.select_cells(&tctx, bid, anchor, to);
             }
         }
         if let (true, None) = (sel_here, focused_cell) {
@@ -220,6 +268,7 @@ impl EditorState {
                 copy = i.consume_key(Modifiers::COMMAND, Key::C);
             });
             if clear {
+                structural = true;
                 for &(r, c) in &rect_cells {
                     let fill = inline::split_fill(&cells[r][c]).0.map(str::to_string);
                     cells[r][c] = inline::set_fill("", fill.as_deref());
@@ -250,7 +299,7 @@ impl EditorState {
                 .and_then(|s| s.cursor.char_range())
                 .map(|g| (g.primary.index.0.min(g.secondary.index.0), g.primary.index.0.max(g.secondary.index.0)));
             self.table_range = rg.filter(|g| g.0 != g.1).map(|g| (bid, r, c, g.0, g.1));
-            if self.table_sel.is_some_and(|s| s.0 == bid) {
+            if !selected_now && self.table_sel.is_some_and(|s| s.0 == bid) {
                 self.table_sel = None;
             }
         } else if self.table_range.is_some_and(|t| t.0 == bid) {
@@ -391,10 +440,13 @@ impl EditorState {
                                             let collapsed = r.primary.index.0 == r.secondary.index.0;
                                             let start = collapsed && r.primary.index.0 == 0;
                                             let end = collapsed && r.primary.index.0 >= o.galley.text().chars().count();
+                                            let n = o.galley.text().chars().count();
+                                            let at_start = r.primary.index.0 == 0;
+                                            let at_end = r.primary.index.0 >= n;
                                             ui.data_mut(|d| {
                                                 d.insert_temp(
                                                     Id::unique(("table-edge", bid)),
-                                                    (cid, first, last, start, end),
+                                                    (cid, first, last, start, end, at_start, at_end),
                                                 )
                                             });
                                         }
@@ -586,11 +638,13 @@ impl EditorState {
         }
         if let Some(f) = applied {
             let target = if sel_now.is_some() { None } else { self.table_range.map(|t| (t.1, t.2)) };
+            structural = true;
             self.apply_cell_format(&tctx, &mut cells, bid, target, &rect_cells, f);
             if !matches!(f, CellFormat::Style(_)) {
                 self.table_menu = 0;
             }
         }
+        structural |= drop_row.is_some() || drop_col.is_some() || add_row || add_col;
         if let Some(r) = drop_row {
             cells.remove(r);
         }
@@ -608,7 +662,10 @@ impl EditorState {
             }
         }
         if cells != before || blocks[i].text.trim().is_empty() && cells != notecraft_core::blocks::table_cells("") {
+            let snapshot = blocks.to_vec();
             blocks[i].text = notecraft_core::blocks::cells_to_text(&cells);
+            let group = (!structural).then(|| format!("t{bid}"));
+            self.record(env.key, &snapshot, group.as_deref());
             out.changed = true;
         }
         ui.allocate_rect(ui.min_rect(), Sense::hover())

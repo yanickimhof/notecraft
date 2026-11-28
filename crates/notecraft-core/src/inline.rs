@@ -722,6 +722,16 @@ pub fn toggle_style(text: &str, sel: (usize, usize), kind: StyleKind) -> (String
     let (open, close) = kind.markers();
     let (ol, cl) = (open.chars().count(), close.chars().count());
     let mask = marker_mask(text);
+    // a selection that starts or ends on markers (select all) acts on the visible text only
+    let (mut a, mut b) = (a, b);
+    if a < b && (a..b).any(|i| !mask[i]) {
+        while mask[a] {
+            a += 1;
+        }
+        while mask[b - 1] {
+            b -= 1;
+        }
+    }
     let splice = |parts: &[(usize, usize, &str)]| -> String {
         // parts: (from, to, replacement) sorted, non-overlapping
         let mut out = String::new();

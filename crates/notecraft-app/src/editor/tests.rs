@@ -787,3 +787,199 @@ fn shift_arrows_select_over_colour_markers_one_visible_character_at_a_time() {
     assert_eq!(cursor_anchor(&h.ctx, id), Some(2));
     assert_eq!(cursor_head(&h.ctx, id), Some(text.chars().count() - 1));
 }
+
+#[test]
+fn shift_arrow_at_the_edge_of_a_cell_selects_the_neighbouring_cells() {
+    let tbl = Block::new(BlockKind::Table, "| a | b |\n| --- | --- |\n| c | d |");
+    let bid = tbl.id;
+    let mut h = egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
+        |ui, (state, blocks): &mut (EditorState, Vec<Block>)| {
+            let pal = Palette::light();
+            let titles = HashMap::new();
+            let meeting = crate::meeting::View::default();
+            let embed = |_: &mut Ui, _: u64, _: &str| {};
+            let env = Env {
+                pal: &pal,
+                lang: Lang::En,
+                root: Path::new("."),
+                titles: &titles,
+                key: "tbl",
+                meeting: &meeting,
+                db_titles: &[],
+                embed: &embed,
+            };
+            state.show(ui, blocks, &env);
+        },
+        (EditorState::default(), vec![tbl]),
+    );
+    theme::install_fonts(&h.ctx);
+    h.state_mut().0.table_focus = Some((bid, 0, 0));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text(" x".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(key_event(Key::ArrowRight, egui::Modifiers::SHIFT));
+    for _ in 0..3 {
+        h.run();
+    }
+    assert_eq!(h.state().0.table_sel, Some((bid, (0, 0), (0, 1))));
+    h.event(key_event(Key::ArrowDown, egui::Modifiers::SHIFT));
+    for _ in 0..3 {
+        h.run();
+    }
+    assert_eq!(h.state().0.table_sel, Some((bid, (0, 0), (1, 1))));
+}
+
+fn table_harness(md: &str) -> (egui_kittest::Harness<'static, (EditorState, Vec<Block>)>, u64) {
+    let tbl = Block::new(BlockKind::Table, md);
+    let bid = tbl.id;
+    let h = egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
+        |ui, (state, blocks): &mut (EditorState, Vec<Block>)| {
+            let pal = Palette::light();
+            let titles = HashMap::new();
+            let meeting = crate::meeting::View::default();
+            let embed = |_: &mut Ui, _: u64, _: &str| {};
+            let env = Env {
+                pal: &pal,
+                lang: Lang::En,
+                root: Path::new("."),
+                titles: &titles,
+                key: "tbl",
+                meeting: &meeting,
+                db_titles: &[],
+                embed: &embed,
+            };
+            state.show(ui, blocks, &env);
+        },
+        (EditorState::default(), vec![tbl]),
+    );
+    theme::install_fonts(&h.ctx);
+    (h, bid)
+}
+
+#[test]
+fn bold_in_a_cell_applies_to_the_selected_word_only() {
+    let (mut h, bid) = table_harness("| a | b |\n| --- | --- |\n| c | d |");
+    h.state_mut().0.table_focus = Some((bid, 0, 0));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text("hello world".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    for _ in 0..5 {
+        h.event(key_event(Key::ArrowLeft, egui::Modifiers::SHIFT));
+        h.run();
+    }
+    for _ in 0..2 {
+        h.run();
+    }
+    h.event(key_event(Key::B, egui::Modifiers::COMMAND));
+    for _ in 0..3 {
+        h.run();
+    }
+    let md = h.state().1[0].text.clone();
+    assert!(md.contains("hello **world**") || md.contains("ahello **world**"), "{md}");
+}
+
+#[test]
+fn undo_works_inside_a_table_cell() {
+    let (mut h, bid) = table_harness("| a | b |\n| --- | --- |\n| c | d |");
+    h.state_mut().0.table_focus = Some((bid, 0, 0));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text(" first".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text(" second".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    let typed = h.state().1[0].text.clone();
+    assert!(typed.contains("a first second"), "{typed}");
+    let undone = {
+        let (state, blocks) = h.state_mut();
+        state.undo("tbl", blocks)
+    };
+    for _ in 0..3 {
+        h.run();
+    }
+    let md = h.state().1[0].text.clone();
+    assert!(undone && !md.contains("second"), "{undone} {md}");
+}
+
+#[test]
+fn the_cell_bar_formats_the_selected_word_only() {
+    use egui_kittest::kittest::Queryable as _;
+    let (mut h, bid) = table_harness("| a | b |\n| --- | --- |\n| c | d |");
+    h.state_mut().0.table_focus = Some((bid, 0, 0));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text("hello world".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    for _ in 0..5 {
+        h.event(key_event(Key::ArrowLeft, egui::Modifiers::SHIFT));
+        h.run();
+    }
+    for _ in 0..3 {
+        h.run();
+    }
+    h.get_by_label("B").click();
+    for _ in 0..4 {
+        h.run();
+    }
+    let md = h.state().1[0].text.clone();
+    assert!(md.contains("hello **world**"), "{md}");
+}
+
+#[test]
+fn italic_on_a_group_of_cells_toggles_and_never_piles_up() {
+    let (mut h, bid) = table_harness("| Name | Value |\n| --- | --- |\n| **bold** x | two words |\n| c | |");
+    for _ in 0..3 {
+        h.run();
+    }
+    h.state_mut().0.table_sel = Some((bid, (0, 0), (2, 1)));
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        h.event(key_event(Key::I, egui::Modifiers::COMMAND));
+        for _ in 0..4 {
+            h.run();
+        }
+        seen.push(h.state().1[0].text.clone());
+    }
+    assert_eq!(seen[1], seen[3]);
+    assert!(seen[1].starts_with("| Name | Value |"), "{}", seen[1]);
+    assert!(seen[0].starts_with("| *Name* | *Value* |"), "{}", seen[0]);
+    assert_eq!(seen[0], seen[2]);
+}
+
+#[test]
+fn italic_on_a_fully_selected_cell_toggles_back() {
+    let (mut h, bid) = table_harness("| hello world | b |\n| --- | --- |\n| c | d |");
+    h.state_mut().0.table_focus = Some((bid, 0, 0));
+    for _ in 0..3 {
+        h.run();
+    }
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        h.event(key_event(Key::A, egui::Modifiers::COMMAND));
+        h.run();
+        h.event(key_event(Key::I, egui::Modifiers::COMMAND));
+        for _ in 0..4 {
+            h.run();
+        }
+        seen.push(h.state().1[0].text.lines().next().unwrap_or("").to_string());
+    }
+    assert_eq!(seen[0], "| *hello world* | b |", "{seen:?}");
+    assert_eq!(seen[1], "| hello world | b |", "{seen:?}");
+    assert_eq!(seen[2], seen[0], "{seen:?}");
+}
