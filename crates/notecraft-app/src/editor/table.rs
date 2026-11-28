@@ -431,6 +431,7 @@ impl EditorState {
                                         .desired_width(col_ws[ci] - 18.0)
                                         .layouter(&mut cell_layouter)
                                         .show(ui);
+                                    super::text_paint::paint_underlines(ui.painter(), &o, &buf, pal, cell_base.color);
                                     let resp = o.response.clone();
                                     if resp.has_focus() {
                                         if let Some(r) = o.cursor_range {
