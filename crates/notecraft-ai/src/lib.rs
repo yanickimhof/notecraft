@@ -249,6 +249,18 @@ fn agent(t: Timeouts) -> ureq::Agent {
         .new_agent()
 }
 
+/// An agent for the local model: never goes through a proxy (a company proxy must not see, or block,
+/// requests to this Mac).
+fn local_agent(t: Timeouts) -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_connect(Some(t.connect))
+        .timeout_global(Some(t.total))
+        .http_status_as_error(false)
+        .proxy(None)
+        .build()
+        .new_agent()
+}
+
 fn map_err(e: ureq::Error, ollama_url: Option<&str>) -> AiError {
     match &e {
         ureq::Error::Timeout(_) => AiError::Timeout,
@@ -360,7 +372,7 @@ pub fn ollama_installed() -> bool {
 pub fn ollama_models(url: &str, t: Timeouts) -> Result<Vec<String>, AiError> {
     guard_local(url)?;
     let base = trim_url(url);
-    let mut resp = agent(t).get(format!("{base}/api/tags")).call().map_err(|e| map_err(e, Some(&base)))?;
+    let mut resp = local_agent(t).get(format!("{base}/api/tags")).call().map_err(|e| map_err(e, Some(&base)))?;
     let status = resp.status().as_u16();
     let body = resp.body_mut().read_to_string().map_err(|e| map_err(e, Some(&base)))?;
     if status != 200 {
@@ -382,7 +394,7 @@ pub fn ollama_delete(url: &str, model: &str) -> Result<(), AiError> {
     guard_local(url)?;
     let base = trim_url(url);
     let t = Timeouts { connect: Duration::from_secs(4), total: Duration::from_secs(30) };
-    let resp = agent(t)
+    let resp = local_agent(t)
         .delete(format!("{base}/api/delete"))
         .force_send_body()
         .send_json(json!({"model": model}))
@@ -400,7 +412,7 @@ pub fn ollama_pull(url: &str, model: &str, mut progress: impl FnMut(u64, u64) ->
     guard_local(url)?;
     let base = trim_url(url);
     let t = Timeouts { connect: Duration::from_secs(4), total: Duration::from_secs(4 * 3600) };
-    let mut resp = agent(t)
+    let mut resp = local_agent(t)
         .post(format!("{base}/api/pull"))
         .send_json(json!({"model": model, "stream": true}))
         .map_err(|e| map_err(e, Some(&base)))?;
@@ -628,6 +640,24 @@ pub fn complete(engine: &Engine, prompt: &Prompt, t: Timeouts) -> Result<String,
     complete_progress(engine, prompt, t, &std::sync::atomic::AtomicUsize::new(0))
 }
 
+/// The answer without what some models echo back from the request: reasoning blocks, the
+/// `Page title:` line and the `<page>` / `<selection>` tags.
+pub fn clean_answer(text: &str) -> String {
+    let mut s = text.to_string();
+    while let (Some(a), Some(b)) = (s.find("<think>"), s.find("</think>")) {
+        if b < a {
+            break;
+        }
+        s.replace_range(a..b + "</think>".len(), "");
+    }
+    let is_tag = |l: &str| matches!(l.trim(), "<page>" | "</page>" | "<selection>" | "</selection>");
+    let mut lines: Vec<&str> = s.lines().filter(|l| !is_tag(l)).collect();
+    if lines.first().is_some_and(|l| l.trim_start().starts_with("Page title:")) {
+        lines.remove(0);
+    }
+    lines.join("\n").trim().to_string()
+}
+
 /// The text of a streamed Ollama answer (one JSON object per line); `progress` holds the number of
 /// characters received so far.
 fn read_ollama_stream(
@@ -672,6 +702,15 @@ pub fn complete_progress(
     progress: &std::sync::atomic::AtomicUsize,
 ) -> Result<String, AiError> {
     progress.store(0, std::sync::atomic::Ordering::Relaxed);
+    complete_raw(engine, prompt, t, progress).map(|a| clean_answer(&a))
+}
+
+fn complete_raw(
+    engine: &Engine,
+    prompt: &Prompt,
+    t: Timeouts,
+    progress: &std::sync::atomic::AtomicUsize,
+) -> Result<String, AiError> {
     match engine {
         Engine::Ollama { url, model } => {
             if model.trim().is_empty() {
@@ -685,7 +724,7 @@ pub fn complete_progress(
             } else {
                 t
             };
-            let mut resp = agent(t)
+            let mut resp = local_agent(t)
                 .post(format!("{base}/api/chat"))
                 .send_json(ollama_body(model, prompt))
                 .map_err(|e| map_err(e, Some(&base)))?;
@@ -1017,6 +1056,13 @@ mod tests {
         let out = complete_progress(&e, &prompt(), Timeouts::default(), &progress).unwrap();
         assert_eq!(out, "Bonjour");
         assert_eq!(progress.load(std::sync::atomic::Ordering::Relaxed), 7);
+    }
+
+    #[test]
+    fn echoed_request_parts_are_removed() {
+        let raw = "<think>hmm</think>Page title: Test\n\n<page>\nBonjour.\n</page>";
+        assert_eq!(clean_answer(raw), "Bonjour.");
+        assert_eq!(clean_answer("Un texte normal.\n\nDeux."), "Un texte normal.\n\nDeux.");
     }
 
     #[test]
