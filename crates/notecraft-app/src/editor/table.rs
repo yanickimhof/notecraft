@@ -632,9 +632,12 @@ impl EditorState {
             if let Some(m) = open_menu {
                 self.table_menu = m;
             }
-        } else {
+            self.table_bar_owner = Some(bid);
+        } else if self.table_bar_owner.is_none_or(|o| o == bid) {
+            // only the table that showed the bar closes it, not the other tables of the page
             self.table_bar_rect = None;
             self.table_menu = 0;
+            self.table_bar_owner = None;
         }
         if let Some(f) = applied {
             let target = if sel_now.is_some() { None } else { self.table_range.map(|t| (t.1, t.2)) };

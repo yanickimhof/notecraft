@@ -276,6 +276,8 @@ pub struct EditorState {
     table_range_set: Option<(usize, usize)>,
     /// Open palette of the table bar: 1 = text colour, 2 = cell fill.
     table_menu: u8,
+    /// The table whose format bar is showing (the bar and its menu are shared by all tables of a page).
+    table_bar_owner: Option<u64>,
     table_bar_rect: Option<Rect>,
     pending_shortcut: Option<(u64, BlockKind, usize)>,
     start: Instant,
@@ -327,6 +329,7 @@ impl Default for EditorState {
             table_range: None,
             table_range_set: None,
             table_menu: 0,
+            table_bar_owner: None,
             table_bar_rect: None,
             pending_shortcut: None,
             start: Instant::now(),

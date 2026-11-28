@@ -834,8 +834,12 @@ fn shift_arrow_at_the_edge_of_a_cell_selects_the_neighbouring_cells() {
 }
 
 fn table_harness(md: &str) -> (egui_kittest::Harness<'static, (EditorState, Vec<Block>)>, u64) {
-    let tbl = Block::new(BlockKind::Table, md);
-    let bid = tbl.id;
+    table_harness_n(&[md])
+}
+
+fn table_harness_n(mds: &[&str]) -> (egui_kittest::Harness<'static, (EditorState, Vec<Block>)>, u64) {
+    let blocks: Vec<Block> = mds.iter().map(|m| Block::new(BlockKind::Table, *m)).collect();
+    let bid = blocks[0].id;
     let h = egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().build_ui_state(
         |ui, (state, blocks): &mut (EditorState, Vec<Block>)| {
             let pal = Palette::light();
@@ -854,7 +858,7 @@ fn table_harness(md: &str) -> (egui_kittest::Harness<'static, (EditorState, Vec<
             };
             state.show(ui, blocks, &env);
         },
-        (EditorState::default(), vec![tbl]),
+        (EditorState::default(), blocks),
     );
     theme::install_fonts(&h.ctx);
     (h, bid)
@@ -982,4 +986,65 @@ fn italic_on_a_fully_selected_cell_toggles_back() {
     assert_eq!(seen[0], "| *hello world* | b |", "{seen:?}");
     assert_eq!(seen[1], "| hello world | b |", "{seen:?}");
     assert_eq!(seen[2], seen[0], "{seen:?}");
+}
+
+#[test]
+fn the_colour_menu_stays_open_when_the_page_has_two_tables() {
+    use egui_kittest::kittest::Queryable as _;
+    let t = "| a | b |\n| --- | --- |\n| c | d |";
+    let (mut h, bid) = table_harness_n(&[t, t]);
+    h.state_mut().0.table_focus = Some((bid, 0, 0));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text("hello world".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    for _ in 0..5 {
+        h.event(key_event(Key::ArrowLeft, egui::Modifiers::SHIFT));
+        h.run();
+    }
+    for _ in 0..3 {
+        h.run();
+    }
+    h.get_by_label("A").click();
+    for _ in 0..4 {
+        h.run();
+    }
+    assert_eq!(h.state().0.table_menu, 1);
+}
+
+#[test]
+fn shortcuts_format_the_selected_word_when_the_page_has_two_tables() {
+    let t = "| a | b |\n| --- | --- |\n| c | d |";
+    let (mut h, bid) = table_harness_n(&[t, t]);
+    h.state_mut().0.table_focus = Some((bid, 0, 0));
+    for _ in 0..3 {
+        h.run();
+    }
+    h.event(egui::Event::Text("hello world".into()));
+    for _ in 0..3 {
+        h.run();
+    }
+    for _ in 0..5 {
+        h.event(key_event(Key::ArrowLeft, egui::Modifiers::SHIFT));
+        h.run();
+    }
+    for _ in 0..3 {
+        h.run();
+    }
+    let mut seen = Vec::new();
+    for k in [Key::I, Key::I, Key::U, Key::U, Key::I] {
+        h.event(key_event(k, egui::Modifiers::COMMAND));
+        for _ in 0..4 {
+            h.run();
+        }
+        seen.push(h.state().1[0].text.lines().next().unwrap_or("").to_string());
+    }
+    assert_eq!(seen[0], "| ahello *world* | b |", "{seen:?}");
+    assert_eq!(seen[1], "| ahello world | b |", "{seen:?}");
+    assert_eq!(seen[2], "| ahello <u>world</u> | b |", "{seen:?}");
+    assert_eq!(seen[3], "| ahello world | b |", "{seen:?}");
+    assert_eq!(seen[4], "| ahello *world* | b |", "{seen:?}");
 }
